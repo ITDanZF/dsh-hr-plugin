@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
-import { createEmptyResume, type ResumeCatalog, type ResumeDocument } from '../domain/index.js'
+import { createEmptyResume, parseResume, type ResumeCatalog, type ResumeDocument } from '../domain/index.js'
 import { resumeRevision } from '../store/revision.js'
 import type { ResumeStore } from '../store/types.js'
 
@@ -18,6 +18,7 @@ export function resumeMirrorPath(sessionId: string): string {
 /** Wrap a store so the first read creates an empty resume, and every save writes a JSON mirror. */
 export function withResumeMirror(store: ResumeStore): ResumeStore {
   const locks = new Map<string, Promise<void>>()
+  const listeners = new Map<string, Set<() => void>>()
   function locked<T>(sessionId: string, action: () => Promise<T>): Promise<T> {
     const previous = locks.get(sessionId) ?? Promise.resolve()
     const task = previous.then(action)
@@ -30,6 +31,13 @@ export function withResumeMirror(store: ResumeStore): ResumeStore {
   }
   async function persist(sessionId: string, document: ResumeDocument): Promise<void> {
     await store.put(sessionId, document)
+    for (const listener of listeners.get(sessionId) ?? []) {
+      try {
+        listener()
+      } catch (error) {
+        console.error('[dsh-hr-plugin] resume listener failed:', error)
+      }
+    }
     try {
       await writeMirror(sessionId, document)
     } catch (error) {
@@ -40,7 +48,11 @@ export function withResumeMirror(store: ResumeStore): ResumeStore {
     async get(sessionId) {
       return locked(sessionId, async () => {
         const found = await store.get(sessionId)
-        if (found) return found
+        if (found) {
+          const normalized = parseResume(found)
+          if (JSON.stringify(normalized) !== JSON.stringify(found)) await persist(sessionId, normalized)
+          return normalized
+        }
         const created = createEmptyResume()
         await persist(sessionId, created)
         return created
@@ -51,7 +63,7 @@ export function withResumeMirror(store: ResumeStore): ResumeStore {
     },
     async compareAndPut(sessionId, expectedRevision, document) {
       return locked(sessionId, async () => {
-        const current = (await store.get(sessionId)) ?? createEmptyResume()
+        const current = parseResume((await store.get(sessionId)) ?? createEmptyResume())
         const revision = resumeRevision(current)
         if (revision !== expectedRevision) return { ok: false, revision, document: current }
         await persist(sessionId, document)
@@ -63,6 +75,15 @@ export function withResumeMirror(store: ResumeStore): ResumeStore {
     },
     putCatalog(catalog: ResumeCatalog) {
       return store.putCatalog(catalog)
+    },
+    subscribe(sessionId, listener) {
+      const group = listeners.get(sessionId) ?? new Set<() => void>()
+      group.add(listener)
+      listeners.set(sessionId, group)
+      return () => {
+        group.delete(listener)
+        if (group.size === 0) listeners.delete(sessionId)
+      }
     },
   }
 }

@@ -1,21 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { ResumeAppearance, ResumeDraft } from '../draft.js'
-import { DraftBlocks, ResumeHeader, type BlockId } from './blocks.js'
-
-const singleOrder: BlockId[] = [
-  'summary', 'intention', 'experience', 'projects', 'education', 'skills',
-  'certificates', 'awards', 'languages', 'activities', 'interests', 'publications', 'references',
-]
-
-const educationFirstOrder: BlockId[] = [
-  'intention', 'summary', 'education', 'experience', 'projects', 'skills',
-  'awards', 'activities', 'certificates', 'languages', 'interests', 'publications', 'references',
-]
-
-const sidebarMainOrder: BlockId[] = [
-  'summary', 'intention', 'experience', 'projects', 'education',
-  'certificates', 'awards', 'activities', 'publications', 'references',
-]
+import { DraftBlocks, ResumeHeader } from './blocks.js'
 
 export function renderTemplate(draft: ResumeDraft): ReactNode {
   const appearance = draft.appearance
@@ -26,25 +11,26 @@ export function renderTemplate(draft: ResumeDraft): ReactNode {
   } as CSSProperties
 
   if (appearance.layout === 'sidebar') {
+    const side = draft.sectionOrder.filter((id) => (draft.sectionPlacement[id] ?? (['skills', 'languages', 'interests'].includes(id) ? 'side' : 'main')) === 'side')
+    const main = draft.sectionOrder.filter((id) => !side.includes(id))
     return (
       <article className={sheetClass(appearance)} style={style}>
         <aside className="sheet-side">
           <ResumeHeader draft={draft} showPhoto={appearance.showPhoto} />
-          <DraftBlocks draft={draft} order={['skills', 'languages', 'interests']} />
+          <DraftBlocks draft={draft} order={side} />
         </aside>
         <div className="sheet-main">
-          <DraftBlocks draft={draft} order={sidebarMainOrder} />
+          <DraftBlocks draft={draft} order={main} />
         </div>
       </article>
     )
   }
 
-  const order = appearance.layout === 'educationFirst' ? educationFirstOrder : singleOrder
   return (
     <article className={sheetClass(appearance)} style={style}>
       {appearance.layout === 'educationFirst' ? <div className="graduate-bar" /> : null}
       <ResumeHeader draft={draft} showPhoto={appearance.showPhoto} />
-      <DraftBlocks draft={draft} order={order} />
+      <DraftBlocks draft={draft} order={draft.sectionOrder} />
     </article>
   )
 }

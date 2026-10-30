@@ -4,11 +4,13 @@ import { registerResumeEditTools } from './edit/index.js'
 import { registerResumeExportPdfTool } from './export/index.js'
 import { registerResumeGuideTools } from './guide/index.js'
 import { registerResumeTemplateTools } from './template/index.js'
+import { registerResumeSectionTools } from './sections/index.js'
 
 const toolModules = [
   registerResumeGuideTools,
   registerResumeEditTools,
   registerResumeTemplateTools,
+  registerResumeSectionTools,
   registerResumeExportPdfTool,
 ]
 

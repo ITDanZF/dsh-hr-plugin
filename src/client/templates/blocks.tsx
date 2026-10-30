@@ -32,6 +32,7 @@ export type BlockId =
   | 'interests'
   | 'publications'
   | 'references'
+  | string
 
 export function ResumeHeader({ draft, showPhoto }: { draft: ResumeDraft, showPhoto?: boolean }): ReactNode {
   const { basics } = draft
@@ -79,7 +80,20 @@ function DraftBlock({ id, draft }: { id: BlockId, draft: ResumeDraft }): ReactNo
     case 'interests': return <InterestBlock draft={draft} />
     case 'publications': return <PublicationBlock items={draft.publications} datePlace={datePlace} />
     case 'references': return <ReferenceBlock draft={draft} />
-    default: return null
+    default: {
+      const custom = draft.customSections.find((item) => item.id === id)
+      if (!custom) return null
+      const fields = custom.fields.filter((field) => field.value.trim())
+      if (!fields.length) return null
+      return <Section title={custom.title}>{fields.map((field) => (
+        <div key={field.id} className="custom-field-output">
+          <strong>{field.label}：</strong>
+          {field.type === 'bullets' ? <ul>{field.value.split(/\r?\n/).filter(Boolean).map((line, index) => <li key={index}>{line}</li>)}</ul>
+            : field.type === 'link' && /^https?:\/\//i.test(field.value) ? <a href={field.value}>{field.value}</a>
+              : <span>{field.value}</span>}
+        </div>
+      ))}</Section>
+    }
   }
 }
 

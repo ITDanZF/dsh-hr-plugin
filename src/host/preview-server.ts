@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { parseResume } from '../domain/index.js'
 import { resumeRevision } from '../store/revision.js'
 import type { ResumeStore } from '../store/types.js'
+import { renderResumePdfBuffer } from '../pdf/render.js'
 
 const PREVIEW_PORT = 3091
 const MAX_BODY_BYTES = 2_000_000
@@ -40,7 +41,7 @@ export function createResumePreviewServer(store: ResumeStore, allowedOrigins = c
     }
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, If-Match')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, If-Match, If-None-Match')
     res.setHeader('Access-Control-Expose-Headers', 'ETag')
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
@@ -56,6 +57,42 @@ export function createResumePreviewServer(store: ResumeStore, allowedOrigins = c
           return
         }
         sendJson(res, 200, catalog)
+        return
+      }
+      const eventsMatch = /^\/hr-resume\/([^/]+)\/events$/.exec(url.pathname)
+      if (eventsMatch && req.method === 'GET') {
+        if (!store.subscribe) {
+          sendJson(res, 501, { error: 'resume events unavailable' })
+          return
+        }
+        const sessionId = decodeURIComponent(eventsMatch[1]!)
+        await store.get(sessionId)
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        })
+        res.write(': connected\n\n')
+        const unsubscribe = store.subscribe(sessionId, () => {
+          if (!res.writableEnded) res.write('data: changed\n\n')
+        })
+        req.on('close', unsubscribe)
+        return
+      }
+      const pdfMatch = /^\/hr-resume\/([^/]+)\/pdf$/.exec(url.pathname)
+      if (pdfMatch && req.method === 'GET') {
+        const document = await store.get(decodeURIComponent(pdfMatch[1]!))
+        if (!document) {
+          sendJson(res, 404, { error: 'resume not found' })
+          return
+        }
+        const pdf = await renderResumePdfBuffer(document)
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'attachment; filename="resume.pdf"',
+          'Content-Length': pdf.length,
+        })
+        res.end(pdf)
         return
       }
       const match = /^\/hr-resume\/([^/]+)$/.exec(url.pathname)
@@ -75,7 +112,13 @@ export function createResumePreviewServer(store: ResumeStore, allowedOrigins = c
           sendJson(res, 404, { error: 'resume not found' })
           return
         }
-        res.setHeader('ETag', resumeRevision(document))
+        const revision = resumeRevision(document)
+        res.setHeader('ETag', revision)
+        if (req.headers['if-none-match'] === revision) {
+          res.writeHead(304)
+          res.end()
+          return
+        }
         sendJson(res, 200, document)
         return
       }

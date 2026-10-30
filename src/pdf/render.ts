@@ -1,13 +1,14 @@
 import { createWriteStream, existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, rmdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
-import PDFDocument from 'pdfkit'
+import PDFDocument from 'pdfkit/js/pdfkit.standalone.js'
 import type { ResumeDocument } from '../domain/index.js'
 
 type Pdf = InstanceType<typeof PDFDocument>
 type Entry = { title: string; meta?: string; summary?: string; bullets?: string[]; keywords?: string[]; url?: string }
 
-function findFont(lines: string[]): string | undefined {
+function findFont(): string {
   const configured = process.env.DSH_HR_PDF_FONT
   if (configured) {
     if (!existsSync(configured)) throw new Error(`PDF font not found: ${configured}`)
@@ -19,32 +20,14 @@ function findFont(lines: string[]): string | undefined {
       ? ['/System/Library/Fonts/Supplemental/Arial Unicode.ttf']
       : ['/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttf', '/usr/share/fonts/truetype/arphic/ukai.ttf']
   const found = candidates.find((candidate) => existsSync(candidate))
-  if (!found && lines.some((line) => /[^\x00-\x7f]/.test(line))) {
+  if (!found) {
     throw new Error('No Unicode PDF font found. Set DSH_HR_PDF_FONT to a Chinese-capable .ttf or .otf file.')
   }
   return found
 }
 
-function linesForFont(document: ResumeDocument): string[] {
-  return [
-    document.basics.name, document.basics.headline, document.basics.email, document.basics.phone,
-    document.basics.location, document.summary, JSON.stringify(document.intention),
-    ...document.experiences.map((item) => JSON.stringify(item)),
-    ...document.projects.map((item) => JSON.stringify(item)),
-    ...document.education.map((item) => JSON.stringify(item)),
-    ...document.skills.map((item) => JSON.stringify(item)),
-    ...document.languages.map((item) => JSON.stringify(item)),
-    ...document.certificates.map((item) => JSON.stringify(item)),
-    ...document.awards.map((item) => JSON.stringify(item)),
-    ...document.activities.map((item) => JSON.stringify(item)),
-    ...document.publications.map((item) => JSON.stringify(item)),
-    ...document.references.map((item) => JSON.stringify(item)),
-    ...document.interests,
-  ]
-}
-
 export async function renderResumePdf(document: ResumeDocument, outputPath: string): Promise<string> {
-  const font = findFont(linesForFont(document))
+  const font = findFont()
   const { appearance } = document
   const scale = appearance.scale === 'large' ? 1.1 : appearance.scale === 'small' ? 0.92 : 1
   const gap = appearance.density === 'relaxed' ? 0.85 : appearance.density === 'compact' ? 0.4 : 0.6
@@ -88,7 +71,7 @@ export async function renderResumePdf(document: ResumeDocument, outputPath: stri
     }
   }
   function entry(item: Entry): void {
-    if (!item.title && !item.summary && !item.bullets?.length) return
+    if (![item.title, item.meta, item.summary, item.url, ...(item.bullets ?? []), ...(item.keywords ?? [])].some((value) => value?.trim())) return
     if (doc.y > doc.page.height - 90) doc.addPage()
     doc.moveDown(gap * 0.55)
     text(item.title, 10.5)
@@ -101,28 +84,34 @@ export async function renderResumePdf(document: ResumeDocument, outputPath: stri
     if (item.url) text(item.url, 9, accent)
   }
   function sectionEntries(title: string, items: Entry[]): void {
-    if (!items.length) return
+    const visible = items.filter((item) => [item.title, item.meta, item.summary, item.url, ...(item.bullets ?? []), ...(item.keywords ?? [])].some((value) => value?.trim()))
+    if (!visible.length) return
     section(title)
-    for (const item of items) entry(item)
+    for (const item of visible) entry(item)
   }
   function period(start: string, end: string): string {
     return [start, end || (start ? '至今' : '')].filter(Boolean).join(' — ')
   }
 
   try {
-    if (font) doc.font(font)
-    else doc.font('Helvetica')
+    doc.font(await readFile(font))
+    if (appearance.showPhoto && document.basics.photo && !/^data:image\/(png|jpe?g);base64,/i.test(document.basics.photo)) {
+      throw new Error('PDF photos must be PNG or JPEG. Please upload a supported photo.')
+    }
+    if (appearance.showPhoto && document.basics.photo) {
+      const encoded = document.basics.photo.slice(document.basics.photo.indexOf(',') + 1)
+      const photo = Buffer.from(encoded, 'base64')
+      doc.image(photo, doc.page.width - 118, 42, { fit: [72, 96] })
+      doc.page.margins.right = 132
+    }
     text(document.basics.name || '未命名简历', 21)
     text(document.basics.headline, 11, accent)
     text([document.basics.phone, document.basics.email, document.basics.location].filter(Boolean).join(' · '), 9)
     for (const link of document.basics.links) text([link.network, link.url || link.username].filter(Boolean).join('：'), 8.5)
-    const intention = [document.intention.role, document.intention.industry, document.intention.cities, document.intention.workType].filter(Boolean)
-    if (intention.length) text(`求职意向：${intention.join(' · ')}`, 9)
-    if (document.summary.trim()) {
-      section('职业摘要')
-      text(document.summary)
+    if (doc.page.margins.right === 132) {
+      doc.y = Math.max(doc.y, 148)
+      doc.page.margins.right = 46
     }
-
     const experiences = document.experiences.map((item) => ({
       title: [item.position, item.organization].filter(Boolean).join(' · '),
       meta: [period(item.startDate, item.endDate), item.location].filter(Boolean).join('  |  '),
@@ -145,55 +134,63 @@ export async function renderResumePdf(document: ResumeDocument, outputPath: stri
       summary: item.exchange,
       bullets: item.courses,
     }))
-    if (appearance.layout === 'educationFirst') {
-      sectionEntries('教育背景', education)
-      sectionEntries('工作与实习经历', experiences)
-    } else {
-      sectionEntries('工作与实习经历', experiences)
-      sectionEntries('教育背景', education)
-    }
-    sectionEntries('项目经历', projects)
-    sectionEntries('技能', document.skills.map((item) => ({
+    for (const id of document.sectionOrder) {
+      if (id === 'intention') {
+        const parts = [document.intention.role, document.intention.industry, document.intention.cities, document.intention.workType].filter(Boolean)
+        if (parts.length) text(`求职意向：${parts.join(' · ')}`, 9)
+      } else if (id === 'summary') {
+        if (document.summary.trim()) { section('职业摘要'); text(document.summary) }
+      } else if (id === 'experience') sectionEntries('工作与实习经历', experiences)
+      else if (id === 'projects') sectionEntries('项目经历', projects)
+      else if (id === 'education') sectionEntries('教育背景', education)
+      else if (id === 'skills') sectionEntries('技能', document.skills.map((item) => ({
       title: item.name,
       meta: item.level,
       keywords: item.keywords,
-    })))
-    sectionEntries('语言', document.languages.map((item) => ({
+      })))
+      else if (id === 'languages') sectionEntries('语言', document.languages.map((item) => ({
       title: item.language,
       meta: item.fluency,
-    })))
-    sectionEntries('证书', document.certificates.map((item) => ({
+      })))
+      else if (id === 'certificates') sectionEntries('证书', document.certificates.map((item) => ({
       title: item.name,
       meta: [item.issuer, item.date, item.expiryDate && `有效期至 ${item.expiryDate}`, item.credentialId].filter(Boolean).join('  |  '),
       url: item.url,
-    })))
-    sectionEntries('荣誉', document.awards.map((item) => ({
+      })))
+      else if (id === 'awards') sectionEntries('荣誉', document.awards.map((item) => ({
       title: item.title,
       meta: [item.awarder, item.date].filter(Boolean).join('  |  '),
       summary: item.summary,
-    })))
-    sectionEntries('校园与志愿', document.activities.map((item) => ({
+      })))
+      else if (id === 'activities') sectionEntries('校园与志愿', document.activities.map((item) => ({
       title: [item.position, item.organization].filter(Boolean).join(' · '),
       meta: [period(item.startDate, item.endDate), item.location].filter(Boolean).join('  |  '),
       bullets: item.highlights,
-    })))
-    sectionEntries('发表与专利', document.publications.map((item) => ({
+      })))
+      else if (id === 'publications') sectionEntries('发表与专利', document.publications.map((item) => ({
       title: item.name,
       meta: [item.type, item.publisher, item.date].filter(Boolean).join('  |  '),
       url: item.url,
-    })))
-    if (document.interests.length) {
-      section('兴趣')
-      text(document.interests.join(' · '))
-    }
-    if (document.referencesOnRequest || document.references.length) {
-      section('推荐人')
-      if (document.referencesOnRequest && !document.references.length) text('如需要可提供')
-      for (const item of document.references) {
-        entry({
-          title: item.name,
-          meta: [item.relationship, item.organization, item.phone, item.email].filter(Boolean).join('  |  '),
-        })
+      })))
+      else if (id === 'interests' && document.interests.some((item) => item.trim())) { section('兴趣'); text(document.interests.join(' · ')) }
+      else if (id === 'references' && (document.referencesOnRequest || document.references.length)) {
+        section('推荐人')
+        if (document.referencesOnRequest && !document.references.length) text('如需要可提供')
+        for (const item of document.references) entry({ title: item.name, meta: [item.relationship, item.organization, item.phone, item.email].filter(Boolean).join('  |  ') })
+      } else {
+        const custom = document.customSections.find((item) => item.id === id)
+        const fields = custom?.fields.filter((field) => field.value.trim()) ?? []
+        if (custom && fields.length) {
+          section(custom.title)
+          for (const field of fields) {
+            text(`${field.label}：`, 10, accent)
+            if (field.type === 'bullets') {
+              for (const line of field.value.split(/\r?\n/)) text(`- ${line}`, 9.5)
+            } else {
+              text(field.value)
+            }
+          }
+        }
       }
     }
     doc.end()
@@ -203,6 +200,18 @@ export async function renderResumePdf(document: ResumeDocument, outputPath: stri
     stream.destroy()
     await rm(outputPath, { force: true })
     throw error
+  }
+}
+
+export async function renderResumePdfBuffer(document: ResumeDocument): Promise<Buffer> {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-hr-pdf-'))
+  const outputPath = path.join(directory, 'resume.pdf')
+  try {
+    await renderResumePdf(document, outputPath)
+    return await readFile(outputPath)
+  } finally {
+    await rm(outputPath, { force: true })
+    await rmdir(directory)
   }
 }
 

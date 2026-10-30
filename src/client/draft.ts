@@ -284,6 +284,9 @@ export function createSampleDraft(): ResumeDraft {
     publications: [],
     referencesOnRequest: true,
     references: [],
+    sectionOrder: ['summary', 'intention', 'experience', 'projects', 'education', 'skills', 'languages', 'certificates', 'awards', 'activities', 'interests', 'references'],
+    sectionPlacement: {},
+    customSections: [],
     appearance: {
       presetId: 'classic-serif',
       layout: 'single',

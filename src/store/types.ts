@@ -10,6 +10,7 @@ export interface ResumeStore {
   >
   getCatalog(): Promise<ResumeCatalog | undefined>
   putCatalog(catalog: ResumeCatalog): Promise<void>
+  subscribe?(sessionId: string, listener: () => void): () => void
 }
 
 export const CATALOG_KEY = 'default'

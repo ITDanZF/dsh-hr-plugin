@@ -1,5 +1,5 @@
 import { Button, Checkbox, Collapse, message, Upload } from 'antd'
-import { useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import {
   emptyActivity,
   emptyAward,
@@ -19,27 +19,11 @@ import {
   type SkillLevel,
   type WorkType,
 } from '../draft.js'
-import type { ResumeCatalog } from '../../domain/index.js'
+import { moveSection, type ResumeCatalog } from '../../domain/index.js'
 import { AreaField, ChoiceField, LinesField, MonthField, TextField, TokensField } from './fields.js'
+import { AddSectionPanel, CustomSectionBody, SectionControls } from './SectionControls.js'
 
-const sections = [
-  ['basics', '基本信息'],
-  ['intention', '求职意向'],
-  ['summary', '摘要'],
-  ['experience', '工作与实习'],
-  ['projects', '项目'],
-  ['education', '教育'],
-  ['skills', '技能'],
-  ['languages', '语言'],
-  ['certificates', '证书'],
-  ['awards', '荣誉'],
-  ['activities', '校园志愿'],
-  ['interests', '兴趣'],
-  ['publications', '发表与专利'],
-  ['references', '推荐人'],
-] as const
-
-type SectionId = (typeof sections)[number][0]
+type SectionId = string
 
 function countLabel(count: number): string {
   return count > 0 ? `${count} 条` : '未填'
@@ -87,6 +71,8 @@ function sectionStatus(draft: ResumeDraft, id: SectionId): string {
     case 'references':
       if (draft.references.length > 0) return countLabel(draft.references.length)
       return draft.referencesOnRequest ? '备索' : '未填'
+    default:
+      return draft.customSections.find((item) => item.id === id)?.fields.some((field) => field.value.trim()) ? '已填' : '未填'
   }
 }
 
@@ -101,30 +87,134 @@ export function ResumeForm({
 }): ReactNode {
   const set = (next: ResumeDraft) => onChange(next)
   const [active, setActive] = useState<SectionId | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null)
+  const pointerRef = useRef<{ id: string; pointerId: number; startX: number; startY: number; active: boolean } | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const pendingMoveRef = useRef<{ positions: Map<string, number>; scrollTop: number } | null>(null)
+  const orderKey = draft.sectionOrder.join('\u0000')
+
+  function cards(): HTMLElement[] {
+    return Array.from(listRef.current?.querySelectorAll<HTMLElement>('.section-accordion > .ant-collapse-item') ?? [])
+  }
+
+  function move(id: string, beforeId?: string): void {
+    const next = moveSection(draft, id, beforeId)
+    if (next.sectionOrder.every((item, index) => item === draft.sectionOrder[index])) return
+    const scrollHost = listRef.current?.closest<HTMLElement>('.hr-body')
+    const currentOrder = ['basics', ...draft.sectionOrder]
+    pendingMoveRef.current = {
+      positions: new Map(cards().map((card, index) => [currentOrder[index]!, card.getBoundingClientRect().top])),
+      scrollTop: scrollHost?.scrollTop ?? 0,
+    }
+    onChange(next)
+  }
+
+  useLayoutEffect(() => {
+    const pending = pendingMoveRef.current
+    if (!pending) return
+    pendingMoveRef.current = null
+    const scrollHost = listRef.current?.closest<HTMLElement>('.hr-body')
+    if (scrollHost) scrollHost.scrollTop = pending.scrollTop
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const currentOrder = ['basics', ...draft.sectionOrder]
+    cards().forEach((card, index) => {
+      const previousTop = pending.positions.get(currentOrder[index]!)
+      if (previousTop === undefined) return
+      const delta = previousTop - card.getBoundingClientRect().top
+      if (Math.abs(delta) < 1) return
+      card.animate([
+        { transform: `translateY(${delta}px)` },
+        { transform: 'translateY(0)' },
+      ], { duration: 240, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' })
+    })
+  }, [orderKey])
+
+  function targetAt(x: number, y: number): { id: string; after: boolean } | null {
+    const item = document.elementFromPoint(x, y)?.closest('.ant-collapse-item')
+    const index = cards().indexOf(item as HTMLElement)
+    if (index <= 0) return null
+    const id = draft.sectionOrder[index - 1]
+    const header = item?.querySelector('.ant-collapse-header')
+    if (!id || !header) return null
+    const bounds = header.getBoundingClientRect()
+    return { id, after: y >= bounds.top + bounds.height / 2 }
+  }
+
+  function clearPointer(): void {
+    pointerRef.current = null
+    setDraggingId(null)
+    setDropTarget(null)
+  }
+
+  function pointerStart(id: string, event: PointerEvent<HTMLElement>): void {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    pointerRef.current = { id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false }
+  }
+
+  function pointerMove(event: PointerEvent<HTMLElement>): void {
+    const pointer = pointerRef.current
+    if (!pointer || pointer.pointerId !== event.pointerId) return
+    if (!pointer.active && Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) < 5) return
+    event.preventDefault()
+    if (!pointer.active) { pointer.active = true; setDraggingId(pointer.id) }
+    const scrollHost = listRef.current?.closest<HTMLElement>('.hr-body')
+    if (scrollHost) {
+      const bounds = scrollHost.getBoundingClientRect()
+      if (event.clientY < bounds.top + 30) scrollHost.scrollTop -= 12
+      else if (event.clientY > bounds.bottom - 30) scrollHost.scrollTop += 12
+    }
+    const target = targetAt(event.clientX, event.clientY)
+    setDropTarget((previous) => !target || target.id === pointer.id ? null : previous?.id === target.id && previous.after === target.after ? previous : target)
+  }
+
+  function pointerEnd(event: PointerEvent<HTMLElement>): void {
+    const pointer = pointerRef.current
+    if (!pointer || pointer.pointerId !== event.pointerId) return
+    const target = pointer.active ? targetAt(event.clientX, event.clientY) : null
+    clearPointer()
+    if (!target || target.id === pointer.id) return
+    const remaining = draft.sectionOrder.filter((id) => id !== pointer.id)
+    const index = remaining.indexOf(target.id) + (target.after ? 1 : 0)
+    move(pointer.id, remaining[index])
+  }
 
   return (
     <div className="editor">
-      <Collapse
-        accordion
-        destroyOnHidden
-        expandIconPosition="end"
-        className="section-accordion"
-        activeKey={active ?? undefined}
-        onChange={(key) => {
-          const next = Array.isArray(key) ? key[0] : key
-          setActive(next ? next as SectionId : null)
-        }}
-        items={sections.map(([id, label]) => ({
-          key: id,
-          label,
-          extra: (
-            <span className={sectionStatus(draft, id) === '未填' ? 'section-pill is-empty' : 'section-pill'}>
-              {sectionStatus(draft, id)}
-            </span>
-          ),
-          children: <SectionBody id={id} draft={draft} catalog={catalog} onChange={onChange} />,
-        }))}
-      />
+      <div ref={listRef} className="section-sort-region">
+        <Collapse
+          accordion
+          destroyOnHidden
+          expandIconPosition="end"
+          className="section-accordion"
+          activeKey={active ?? undefined}
+          onChange={(key) => {
+            const next = Array.isArray(key) ? key[0] : key
+            setActive(next ? next as SectionId : null)
+          }}
+          items={['basics', ...draft.sectionOrder].map((id) => {
+            const controls = id === 'basics' ? null : SectionControls({ draft, id, onChange, onMove: move, onPointerStart: pointerStart, onPointerMove: pointerMove, onPointerEnd: pointerEnd, onPointerCancel: clearPointer })
+            return {
+              key: id,
+              className: [draggingId === id ? 'section-is-dragging' : '', dropTarget?.id === id ? (dropTarget.after ? 'section-drop-after' : 'section-drop-before') : ''].filter(Boolean).join(' '),
+              label: id === 'basics' ? '基本信息' : controls?.label,
+              extra: (
+                <span className="section-header-extra">
+                  <span className={sectionStatus(draft, id) === '未填' ? 'section-pill is-empty' : 'section-pill'}>
+                    {sectionStatus(draft, id)}
+                  </span>
+                  {controls?.extra}
+                </span>
+              ),
+              children: <SectionBody id={id} draft={draft} catalog={catalog} onChange={onChange} />,
+            }
+          })}
+        />
+      </div>
+      <AddSectionPanel draft={draft} onChange={onChange} />
     </div>
   )
 }
@@ -149,11 +239,11 @@ function SectionBody({
               : <div className="photo-empty">无照片</div>}
             <div>
               <Upload
-                accept="image/*"
+                accept="image/png,image/jpeg"
                 showUploadList={false}
                 beforeUpload={(file) => {
-                  if (!file.type.startsWith('image/')) {
-                    void message.error('请选择图片文件')
+                  if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+                    void message.error('照片仅支持 PNG 或 JPEG')
                     return false
                   }
                   if (file.size > 1_000_000) {
@@ -181,7 +271,7 @@ function SectionBody({
                     移除照片
                   </Button>
                 )
-                : <p className="hint">照片保存在本机会话中，请选择 1 MB 以内的图片。</p>}
+                : <p className="hint">照片保存在本机会话中，请选择 1 MB 以内的 PNG/JPEG 图片。</p>}
             </div>
           </div>
           <div className="fields" style={{ marginTop: 12 }}>
@@ -480,7 +570,7 @@ function SectionBody({
           ))}
         </RepeatSection>
   )
-  return null
+  return <CustomSectionBody draft={draft} id={id} onChange={onChange} />
 }
 
 function RepeatSection({

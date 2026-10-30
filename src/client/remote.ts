@@ -16,12 +16,35 @@ export async function loadCatalog(): Promise<ResumeCatalog> {
   return response.json() as Promise<ResumeCatalog>
 }
 
-export async function loadSessionResume(sessionId: string): Promise<ResumeSnapshot> {
-  const response = await fetch(`${PREVIEW_ORIGIN}/hr-resume/${encodeURIComponent(sessionId)}`)
+export async function loadSessionResume(sessionId: string, knownRevision?: string): Promise<ResumeSnapshot | null> {
+  const response = await fetch(`${PREVIEW_ORIGIN}/hr-resume/${encodeURIComponent(sessionId)}`, {
+    headers: knownRevision ? { 'If-None-Match': knownRevision } : undefined,
+  })
+  if (response.status === 304) return null
   if (!response.ok) throw new Error('resume load failed')
   const revision = response.headers.get('ETag')
   if (!revision) throw new Error('resume revision missing')
   return { document: parseResume(await response.json()), revision }
+}
+
+export function watchSessionResume(sessionId: string, onChange: () => void): () => void {
+  const events = new EventSource(`${PREVIEW_ORIGIN}/hr-resume/${encodeURIComponent(sessionId)}/events`)
+  events.onopen = onChange
+  events.onmessage = onChange
+  return () => events.close()
+}
+
+export async function downloadSessionResumePdf(sessionId: string): Promise<void> {
+  const response = await fetch(`${PREVIEW_ORIGIN}/hr-resume/${encodeURIComponent(sessionId)}/pdf`)
+  if (!response.ok) throw new Error('PDF download failed')
+  const url = URL.createObjectURL(await response.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = '简历.pdf'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export async function saveSessionResume(sessionId: string, document: ResumeDocument, revision: string): Promise<string> {

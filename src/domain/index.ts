@@ -1,4 +1,6 @@
 export {
+  defaultSectionOrder,
+  sectionIds,
   accentValues,
   classicAppearance,
   createEmptyResume,
@@ -20,6 +22,9 @@ export {
   workTypes,
 } from './types.js'
 export type {
+  CustomField,
+  CustomFieldType,
+  CustomSection,
   ActivityItem,
   AwardItem,
   CertificateItem,
@@ -49,6 +54,7 @@ export type {
   SkillLevel,
   WorkType,
 } from './types.js'
+export { addSection, createCustomSection, hideSection, isKnownSection, legacySectionOrder, moveSection, removeCustomField, renameCustomSection, reorderSections, sectionHasContent, sectionLabels, setSectionPlacement, upsertCustomField } from './sections.js'
 export { appearanceFromPreset, stylePresets, type StylePreset } from './presets.js'
 export {
   activeCatalog,

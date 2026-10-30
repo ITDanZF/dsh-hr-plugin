@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import {
+  addSection,
+  createCustomSection,
+  hideSection,
   applyPreset,
   createEmptyResume,
   parseResume,
+  reorderSections,
+  upsertCustomField,
   removeEntry,
   reorderEntries,
   ResumeDomainError,
@@ -25,6 +30,8 @@ const profile = setProfile(empty, {
 })
 assert.equal(profile.basics.name, 'Ada Lovelace')
 assert.equal(empty.basics.name, '', 'setProfile must not mutate the input')
+const hiddenSummary = hideSection(profile, 'summary')
+assert.ok(!setProfile(hiddenSummary, { name: 'Ada Babbage' }).sectionOrder.includes('summary'), 'unrelated AI edits must not reveal hidden modules')
 
 const withJob = upsertEntry(profile, 'experiences', {
   organization: 'Analytical Engine Co.',
@@ -68,6 +75,26 @@ assert.equal(preset.appearance.presetId, 'magazine')
 assert.equal(preset.appearance.font, 'serif')
 
 assert.deepEqual(parseResume(preset), preset)
+
+const legacy = structuredClone(preset)
+delete legacy.sectionOrder
+delete legacy.sectionPlacement
+delete legacy.customSections
+const migrated = parseResume(legacy)
+assert.ok(migrated.sectionOrder.includes('experience'))
+assert.ok(migrated.sectionOrder.includes('summary'))
+assert.ok(migrated.sectionOrder.includes('languages') === false)
+legacy.languages = [{ id: 'lng_blank', language: '', fluency: '' }]
+assert.ok(!parseResume(legacy).sectionOrder.includes('languages'), 'blank legacy entries should stay in the add panel')
+let sections = addSection(migrated, 'languages')
+assert.ok(sections.sectionOrder.includes('languages'))
+sections = reorderSections(sections, [...sections.sectionOrder].reverse())
+assert.equal(sections.sectionOrder[0], 'languages')
+assert.throws(() => reorderSections(sections, ['summary']))
+sections = createCustomSection(sections, '额外经历')
+const customId = sections.customSections[0].id
+sections = upsertCustomField(sections, customId, { label: '补充说明', type: 'bullets', value: '一条\n二条' })
+assert.deepEqual(parseResume(sections), sections)
 
 assert.throws(() => removeEntry(removed, 'experiences', 'missing'), (error) => {
   assert.ok(error instanceof ResumeDomainError)

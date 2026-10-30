@@ -1,4 +1,5 @@
 import { applyPreset, catalogValues } from './catalog.js'
+import { addSection, isKnownSection, legacySectionOrder, sectionHasContent } from './sections.js'
 import {
   createEmptyResume,
   createEntryId,
@@ -27,6 +28,7 @@ import {
   type ReferenceItem,
   type ResumeAppearance,
   type ResumeDocument,
+  type CustomSection,
   type ResumeLink,
   type SkillGroup,
   type SkillLevel,
@@ -82,7 +84,12 @@ export function setProfile(document: ResumeDocument, patch: ProfilePatch): Resum
     }
     next.referencesOnRequest = patch.referencesOnRequest
   }
-  return next
+  let result = next
+  if ((patch.role !== undefined || patch.industry !== undefined || patch.cities !== undefined || patch.workType !== undefined)
+    && sectionHasContent(result, 'intention')) result = addSection(result, 'intention')
+  if (patch.summary !== undefined && sectionHasContent(result, 'summary')) result = addSection(result, 'summary')
+  if (patch.referencesOnRequest !== undefined && sectionHasContent(result, 'references')) result = addSection(result, 'references')
+  return result
 }
 
 export function upsertEntry(document: ResumeDocument, collection: string, raw: unknown): ResumeDocument {
@@ -97,7 +104,8 @@ export function upsertEntry(document: ResumeDocument, collection: string, raw: u
   const item = normalizeEntry(name, { ...asRecord(base), ...record, id })
   if (index >= 0) items[index] = item
   else items.push(item)
-  return next
+  const sectionId = name === 'experiences' ? 'experience' : name
+  return addSection(next, sectionId)
 }
 
 export function removeEntry(document: ResumeDocument, collection: string, id: string): ResumeDocument {
@@ -135,7 +143,7 @@ export function reorderEntries(document: ResumeDocument, collection: string, ord
 export function setInterests(document: ResumeDocument, interests: unknown): ResumeDocument {
   const next = structuredClone(document)
   next.interests = requireStringArray(interests, 'interests')
-  return next
+  return sectionHasContent(next, 'interests') ? addSection(next, 'interests') : next
 }
 
 export function setAppearance(document: ResumeDocument, patch: Partial<ResumeAppearance>): ResumeDocument {
@@ -175,7 +183,8 @@ export function parseResume(input: unknown): ResumeDocument {
   const basics = requireRecord(record.basics, 'basics')
   const intention = requireRecord(record.intention, 'intention')
   const appearance = requireRecord(record.appearance, 'appearance')
-  return {
+  const customSections = record.customSections === undefined ? [] : readCustomSections(record.customSections)
+  const parsed: ResumeDocument = {
     basics: {
       name: requireString(basics.name, 'basics.name'),
       headline: requireString(basics.headline, 'basics.headline'),
@@ -205,7 +214,44 @@ export function parseResume(input: unknown): ResumeDocument {
     referencesOnRequest: requireBoolean(record.referencesOnRequest, 'referencesOnRequest'),
     references: readEntries('references', record.references),
     appearance: readAppearance(appearance, empty.appearance.presetId),
+    sectionOrder: [],
+    sectionPlacement: {},
+    customSections,
   }
+  const order = record.sectionOrder === undefined ? legacySectionOrder(parsed) : requireStringArray(record.sectionOrder, 'sectionOrder')
+  if (new Set(order).size !== order.length || order.some((id) => !isKnownSection(id, parsed))) throw new ResumeDomainError('invalid sectionOrder')
+  parsed.sectionOrder = order
+  if (record.sectionPlacement !== undefined) {
+    const placement = requireRecord(record.sectionPlacement, 'sectionPlacement')
+    for (const [id, value] of Object.entries(placement)) {
+      if (!isKnownSection(id, parsed) || (value !== 'main' && value !== 'side')) throw new ResumeDomainError('invalid sectionPlacement')
+      parsed.sectionPlacement[id] = value
+    }
+  }
+  return parsed
+}
+
+function readCustomSections(value: unknown): CustomSection[] {
+  if (!Array.isArray(value)) throw new ResumeDomainError('customSections must be an array')
+  const ids = new Set<string>()
+  return value.map((raw, index) => {
+    const section = requireRecord(raw, `customSections[${index}]`)
+    const id = requireString(section.id, 'custom section id')
+    const title = requireString(section.title, 'custom section title')
+    if (!id.startsWith('sec_') || ids.has(id) || !title.trim() || !Array.isArray(section.fields)) throw new ResumeDomainError('invalid custom section')
+    ids.add(id)
+    const fieldIds = new Set<string>()
+    const fields = section.fields.map((rawField) => {
+      const field = requireRecord(rawField, 'custom field')
+      const fieldId = requireString(field.id, 'custom field id')
+      const label = requireString(field.label, 'custom field label')
+      const type = requireString(field.type, 'custom field type')
+      if (!fieldId || fieldIds.has(fieldId) || !label.trim() || !['text', 'longText', 'dateRange', 'link', 'bullets'].includes(type)) throw new ResumeDomainError('invalid custom field')
+      fieldIds.add(fieldId)
+      return { id: fieldId, label, type: type as 'text' | 'longText' | 'dateRange' | 'link' | 'bullets', value: requireString(field.value, 'custom field value') }
+    })
+    return { id, title, fields }
+  })
 }
 
 function readEntries<C extends EntryCollection>(collection: C, value: unknown): ResumeDocument[C] {

@@ -26,7 +26,8 @@
     "build": "tsc && node scripts/bundle-client.mjs",
     "dev:panel": "vite",
     "check:domain": "pnpm run build && node scripts/check-domain.mjs",
-    "check:preview": "pnpm run build && node scripts/check-preview.mjs"
+    "check:preview": "pnpm run build && node scripts/check-preview.mjs",
+    "check:merge": "pnpm run build && node scripts/check-merge.mjs"
   },
   "engines": {
     "node": ">=22.19",

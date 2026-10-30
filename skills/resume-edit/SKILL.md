@@ -1,6 +1,6 @@
 ---
 name: resume-edit
-description: 编辑当前会话简历的事实和正文，包括从素材整理经历、润色要点、按岗位定制、补全与纠错；不调整纸面或导出。
+description: 编辑当前会话简历的事实、正文和模块编排，包括经历润色、按岗位定制、自定义模块与排序；不调整纸面或导出。
 ---
 
 # 编辑简历正文
@@ -27,6 +27,9 @@ description: 编辑当前会话简历的事实和正文，包括从素材整理�
 | 活动、发表、推荐人 | `resume_upsert_activity`、`resume_upsert_publication`、`resume_upsert_reference` | 分别对应 `activities`、`publications`、`references` |
 | 推荐人备索、兴趣 | `resume_set_references_flag`、`resume_set_interests` | `referencesOnRequest`；`interests` |
 | 删除或排序条目 | `resume_remove_entry`、`resume_reorder_entries` | `collection`、`id`；`collection`、`ordered_ids` |
+| 展示与排序模块 | `resume_add_section`、`resume_hide_section`、`resume_reorder_sections` | `section_id`；`ordered_ids` |
+| 自定义模块 | `resume_create_custom_section`、`resume_rename_custom_section`、`resume_upsert_custom_field`、`resume_remove_custom_field` | `section_id`、`field_id`、`title`、`label`、`field_type`、`value` |
+| 侧栏位置 | `resume_set_section_placement` | `section_id`、`placement`：`main` 或 `side` |
 
 条目 `collection` 只接受 `experiences`、`projects`、`education`、`skills`、`languages`、`certificates`、`awards`、`activities`、`publications`、`references`。各 `upsert` 的具体字段名以工具参数为准，例如工作经历用 `organization`、`position`、`highlights`，项目用 `name`、`role`、`entity`、`highlights`，教育用 `school`、`degree`、`area`。
 
@@ -35,5 +38,7 @@ description: 编辑当前会话简历的事实和正文，包括从素材整理�
 - 修改现有条目必须使用最新 `document` 中对应集合的 `id`，并先确认它确实存在。省略 `id` 是新增；传入不存在的 `id` 也会新增。不要用姓名、标题或数组位置代替 `id`。
 - 普通字段省略时保留原值；传空字符串可清空字符串字段。`highlights`、`keywords`、`courses` 等数组字段一旦提交，会替换该字段的整个数组。`resume_set_links` 和 `resume_set_interests` 会替换整份列表；做局部改动时先合并未改项。
 - `resume_reorder_entries` 的 `ordered_ids` 必须包含该集合当前所有 `id`，每个恰好一次。删除和重排只在用户要求或实现其要求确有必要时执行。
+- 模块顺序由 `document.sectionOrder` 决定。用户要求 AI 排序时，先按目标岗位和内容重要性给出合理顺序，再用 `resume_reorder_sections` 提交全部已展示模块的 ID，每个恰好一次。基本信息固定在页眉，不进入排序。隐藏模块只移出展示列表，不删除内容；写入隐藏的内置模块内容会使它重新展示。
+- 新建自定义模块后，从返回的 `document.customSections` 读取实际 `section_id`；新增字段省略 `field_id`，更新或删除字段使用当前文档中的真实 ID。字段类型仅使用 `text`、`longText`、`dateRange`、`link`、`bullets`；要点列表按换行分隔。侧栏版式中，正文和侧栏分别保持各自在 `sectionOrder` 中的相对顺序。
 - `workType` 只用 `''`、`全职`、`兼职`、`实习`；`level` 只用 `''`、`精通`、`熟练`、`了解`。其他字段不要编造系统不支持的选项。
 - 每次只调用一个写入工具，检查返回的 `ok` 和完整 `document` 后再继续。`ok: false` 时把 `error` 告知用户并停止依赖该修改的操作。最后核对条目内容、数量与顺序，不以“工具已调用”代替核对。

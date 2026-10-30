@@ -27,6 +27,12 @@ export const entryCollections = [
   'references',
 ] as const
 
+export const sectionIds = ['intention', 'summary', 'experience', 'projects', 'education', 'skills', 'languages', 'certificates', 'awards', 'activities', 'interests', 'publications', 'references'] as const
+export const defaultSectionOrder: string[] = ['summary', 'experience', 'projects', 'education', 'skills']
+export type CustomFieldType = 'text' | 'longText' | 'dateRange' | 'link' | 'bullets'
+export interface CustomField { id: string; label: string; type: CustomFieldType; value: string }
+export interface CustomSection { id: string; title: string; fields: CustomField[] }
+
 export const accentValues = ['#1c1917', '#1d4e89', '#1e3330', '#8a4b2f', '#3f4a57', '#3d348b'] as const
 export const paperValues = ['#ffffff', '#f4f6f8', '#faf6f0', '#f6efe6', '#f7f9fc'] as const
 export const inkValues = ['#1c1917', '#111111', '#3a2418', '#1c2430'] as const
@@ -200,6 +206,9 @@ export interface ResumeDocument {
   referencesOnRequest: boolean
   references: ReferenceItem[]
   appearance: ResumeAppearance
+  sectionOrder: string[]
+  sectionPlacement: Record<string, 'main' | 'side'>
+  customSections: CustomSection[]
 }
 
 export type EntryItem = ResumeDocument[EntryCollection][number]
@@ -254,6 +263,9 @@ export function createEmptyResume(): ResumeDocument {
     referencesOnRequest: false,
     references: [],
     appearance: { ...classicAppearance },
+    sectionOrder: [...defaultSectionOrder],
+    sectionPlacement: {},
+    customSections: [],
   }
 }
 
