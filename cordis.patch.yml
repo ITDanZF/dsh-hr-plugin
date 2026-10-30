@@ -1,0 +1,17 @@
+- insert:
+    - id: storage-sqlite
+      name: '@deepseek-ai/dsh-storage-sqlite'
+      config:
+        path: !!js dshHomePath('storages', 'hr-plugin.sqlite')
+        journalMode: wal
+
+    - id: hr-plugin
+      name: dsh-hr-plugin
+
+# Replace the whole storage-domain config (Cordis does not deep-merge).
+- id: storage-domain
+  name: '@deepseek-ai/dsh-storage-domain'
+  config:
+    backend: json
+    routes:
+      resume: sqlite
