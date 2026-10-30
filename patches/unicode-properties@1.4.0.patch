@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index c50cbc58c33c3cc8ffec6a81a8e1050bf2a64785..962db84dbb76de1bd6116584a4005567d5d292dd 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,7 @@
+   "main": "./dist/main.cjs",
+   "module": "./dist/module.mjs",
+   "exports": {
+-    "require": "./dist.main.cjs",
++    "require": "./dist/main.cjs",
+     "import": "./dist/module.mjs"
+   },
+   "directories": {

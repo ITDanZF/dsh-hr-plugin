@@ -1,4 +1,4 @@
-import { Button, Checkbox, Collapse, Upload } from 'antd'
+import { Button, Checkbox, Collapse, message, Upload } from 'antd'
 import { useState, type ReactNode } from 'react'
 import {
   emptyActivity,
@@ -152,11 +152,20 @@ function SectionBody({
                 accept="image/*"
                 showUploadList={false}
                 beforeUpload={(file) => {
+                  if (!file.type.startsWith('image/')) {
+                    void message.error('请选择图片文件')
+                    return false
+                  }
+                  if (file.size > 1_000_000) {
+                    void message.error('照片请控制在 1 MB 以内')
+                    return false
+                  }
                   const reader = new FileReader()
                   reader.onload = () => {
                     const photo = typeof reader.result === 'string' ? reader.result : ''
                     set({ ...draft, basics: { ...draft.basics, photo } })
                   }
+                  reader.onerror = () => { void message.error('照片读取失败，请重试') }
                   reader.readAsDataURL(file)
                   return false
                 }}
@@ -172,7 +181,7 @@ function SectionBody({
                     移除照片
                   </Button>
                 )
-                : <p className="hint">照片只留在这个页面里，不会上传。</p>}
+                : <p className="hint">照片保存在本机会话中，请选择 1 MB 以内的图片。</p>}
             </div>
           </div>
           <div className="fields" style={{ marginTop: 12 }}>

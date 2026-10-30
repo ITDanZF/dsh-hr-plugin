@@ -56,10 +56,33 @@ export const panelCss = `
   font-size: 13px;
   cursor: pointer;
 }
+.export-button:disabled { cursor: not-allowed; opacity: 0.5; }
 .print-source { display: none; }
 .hr-brand { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hr-brand strong { font-size: 15px; font-weight: 650; }
 .hr-brand span, .hint, .item-index { color: var(--dsw-alias-label-tertiary, #78716c); font-size: 12px; }
+.hr-save-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  color: #7c2d12;
+  background: #fff7ed;
+  border-bottom: 1px solid #fed7aa;
+  font-size: 12px;
+}
+.hr-save-alert button {
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 3px 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.hr-save-alert button:hover, .hr-save-alert button:focus-visible { background: #ffedd5; }
+.hr-loading { padding: 20px 16px; color: var(--dsw-alias-label-secondary, #57534e); }
 .hr-switch, .hr-templates, .jump { padding: 0; }
 .hr-switch { background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.04)); border-radius: 999px; padding: 3px; }
 .hr-switch button, .hr-templates button, .jump button, .text-button, .item-delete {

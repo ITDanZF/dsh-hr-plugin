@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { parseResume } from '../domain/index.js'
+import { resumeRevision } from '../store/revision.js'
 import type { ResumeStore } from '../store/types.js'
 
 const PREVIEW_PORT = 3091
@@ -40,6 +41,7 @@ export function createResumePreviewServer(store: ResumeStore, allowedOrigins = c
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, If-Match')
+    res.setHeader('Access-Control-Expose-Headers', 'ETag')
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
       res.end()
@@ -68,7 +70,13 @@ export function createResumePreviewServer(store: ResumeStore, allowedOrigins = c
         return
       }
       if (req.method === 'GET') {
-        sendJson(res, 200, await store.get(sessionId))
+        const document = await store.get(sessionId)
+        if (!document) {
+          sendJson(res, 404, { error: 'resume not found' })
+          return
+        }
+        res.setHeader('ETag', resumeRevision(document))
+        sendJson(res, 200, document)
         return
       }
       sendJson(res, 405, { error: 'method not allowed' })
@@ -86,9 +94,19 @@ function configuredOrigins(): Set<string> {
 
 async function saveResume(req: IncomingMessage, res: ServerResponse, store: ResumeStore, sessionId: string): Promise<void> {
   try {
+    const expectedRevision = req.headers['if-match']
+    if (typeof expectedRevision !== 'string') {
+      sendJson(res, 428, { error: 'If-Match is required; read the resume before saving' })
+      return
+    }
     const text = await readBody(req)
     const document = parseResume(JSON.parse(text))
-    await store.put(sessionId, document)
+    const result = await store.compareAndPut(sessionId, expectedRevision, document)
+    res.setHeader('ETag', result.revision)
+    if (!result.ok) {
+      sendJson(res, 409, { error: 'resume changed since it was read', document: result.document })
+      return
+    }
     res.writeHead(204)
     res.end()
   } catch (error) {

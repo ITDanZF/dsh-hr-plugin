@@ -6,7 +6,9 @@ DeepSeek Harness 简历插件。一份会话对应一份完整简历草稿，写
 
 本机调试使用已安装的 `dsh` 0.2.1-rc.2，不在 `deepseek-harness` 源码目录里安装依赖。日常使用单独的 `hr-dev` profile，不改默认 `web` profile。
 
-对话工具是 `resume_read`、`resume_set_profile`、`resume_upsert_entry`、`resume_remove_entry`、`resume_reorder_entries`、`resume_set_interests`、`resume_set_appearance`、`resume_export_pdf`。面板上的「导出」打印当前纸面，中文和样式以这次打印为准。`resume_export_pdf` 仍写出纯文本 PDF。
+对话工具按说明书、正文、模板和导出分组。先用 `resume_read_manual`、`resume_read_workflow` 和 `resume_read` 了解当前会话；正文、模板工具分别修改内容和纸面。`resume_export_pdf` 输出支持中文和自动换页的 PDF，并应用基本纸面属性。面板上的「导出」打印当前纸面，可保留照片和完整页面布局。
+
+面板接口默认只允许本机 Harness（3080）及面板开发服务（5174）的浏览器来源。自定义宿主来源可用逗号分隔的 `DSH_HR_ALLOWED_ORIGINS` 配置。所有面板写入都要求先读取版本号；若对话工具同时改动，面板会提示冲突供用户处理。导出中文 PDF 时需要系统中有支持中文的 TTF/OTF 字体；找不到时用 `DSH_HR_PDF_FONT` 指定路径。
 
 ## 准备
 

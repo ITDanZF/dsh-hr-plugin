@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: set this to true or false
+patchedDependencies:
+  unicode-properties@1.4.0: patches/unicode-properties@1.4.0.patch

@@ -89,7 +89,7 @@ export function registerResumeEditTools(ctx: Context, store: ResumeStore): void 
     async execute(args, exec) {
       try {
         const { sessionId, document } = await loadDocument(store, exec)
-        return saveDocument(store, sessionId, setProfile(document, args))
+        return saveDocument(store, sessionId, document, setProfile(document, args))
       } catch (error) {
         return fail(error)
       }

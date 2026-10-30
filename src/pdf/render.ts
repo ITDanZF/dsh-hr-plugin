@@ -1,121 +1,208 @@
-import { writeFile } from 'node:fs/promises'
+import { createWriteStream, existsSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import path from 'node:path'
+import PDFDocument from 'pdfkit'
 import type { ResumeDocument } from '../domain/index.js'
 
-/**
- * Minimal PDF writer that embeds text as UTF-16BE with a built-in font.
- * Chinese glyphs may fall back to missing-glyph boxes unless the viewer
- * substitutes fonts; the export path and structure remain stable for tools.
- */
-export async function renderResumePdf(
-  document: ResumeDocument,
-  outputPath: string,
-): Promise<string> {
-  const lines: string[] = []
-  const { basics, intention } = document
-  lines.push(basics.name || 'Untitled Resume')
-  if (basics.headline) lines.push(basics.headline)
-  const contacts = [basics.email, basics.phone, basics.location].filter(Boolean).join(' | ')
-  if (contacts) lines.push(contacts)
-  const intentionLine = [intention.role, intention.industry, intention.cities, intention.workType].filter(Boolean).join(' | ')
-  if (intentionLine) lines.push(intentionLine)
-  if (document.summary) {
-    lines.push('')
-    lines.push(document.summary)
-  }
-  for (const item of document.experiences) {
-    pushBlock(lines, [item.position, item.organization].filter(Boolean).join(' | '), [item.startDate, item.endDate].filter(Boolean).join(' - '), item.highlights)
-  }
-  for (const item of document.projects) {
-    pushBlock(lines, item.name, [item.role, item.entity].filter(Boolean).join(' | '), item.highlights)
-  }
-  for (const item of document.education) {
-    pushBlock(lines, [item.school, item.degree, item.area].filter(Boolean).join(' | '), [item.startDate, item.endDate].filter(Boolean).join(' - '), item.courses)
-  }
-  for (const item of document.skills) {
-    pushBlock(lines, item.name, item.level, item.keywords)
-  }
-  for (const item of document.languages) {
-    pushBlock(lines, item.language, item.fluency, [])
-  }
-  for (const item of document.certificates) {
-    pushBlock(lines, item.name, [item.issuer, item.date].filter(Boolean).join(' | '), [])
-  }
-  for (const item of document.awards) {
-    pushBlock(lines, item.title, [item.awarder, item.date].filter(Boolean).join(' | '), item.summary ? [item.summary] : [])
-  }
-  for (const item of document.activities) {
-    pushBlock(lines, [item.position, item.organization].filter(Boolean).join(' | '), [item.startDate, item.endDate].filter(Boolean).join(' - '), item.highlights)
-  }
-  if (document.interests.length > 0) pushBlock(lines, '兴趣', '', document.interests)
-  for (const item of document.publications) {
-    pushBlock(lines, item.name, [item.type, item.publisher, item.date].filter(Boolean).join(' | '), [])
-  }
-  if (document.referencesOnRequest && document.references.length === 0) pushBlock(lines, '推荐人', '如需要可提供', [])
-  for (const item of document.references) {
-    pushBlock(lines, item.name, [item.relationship, item.organization].filter(Boolean).join(' | '), [item.phone, item.email].filter(Boolean))
-  }
+type Pdf = InstanceType<typeof PDFDocument>
+type Entry = { title: string; meta?: string; summary?: string; bullets?: string[]; keywords?: string[]; url?: string }
 
-  const content = buildContentStream(lines)
-  const pdf = buildPdf(content)
-  await writeFile(outputPath, pdf)
-  return outputPath
+function findFont(lines: string[]): string | undefined {
+  const configured = process.env.DSH_HR_PDF_FONT
+  if (configured) {
+    if (!existsSync(configured)) throw new Error(`PDF font not found: ${configured}`)
+    return configured
+  }
+  const candidates = process.platform === 'win32'
+    ? ['C:/Windows/Fonts/simhei.ttf', 'C:/Windows/Fonts/simsunb.ttf']
+    : process.platform === 'darwin'
+      ? ['/System/Library/Fonts/Supplemental/Arial Unicode.ttf']
+      : ['/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttf', '/usr/share/fonts/truetype/arphic/ukai.ttf']
+  const found = candidates.find((candidate) => existsSync(candidate))
+  if (!found && lines.some((line) => /[^\x00-\x7f]/.test(line))) {
+    throw new Error('No Unicode PDF font found. Set DSH_HR_PDF_FONT to a Chinese-capable .ttf or .otf file.')
+  }
+  return found
 }
 
-function pushBlock(lines: string[], title: string, meta: string, bullets: string[]): void {
-  lines.push('')
-  if (title) lines.push(title)
-  if (meta) lines.push(meta)
-  for (const bullet of bullets) lines.push(`- ${bullet}`)
+function linesForFont(document: ResumeDocument): string[] {
+  return [
+    document.basics.name, document.basics.headline, document.basics.email, document.basics.phone,
+    document.basics.location, document.summary, JSON.stringify(document.intention),
+    ...document.experiences.map((item) => JSON.stringify(item)),
+    ...document.projects.map((item) => JSON.stringify(item)),
+    ...document.education.map((item) => JSON.stringify(item)),
+    ...document.skills.map((item) => JSON.stringify(item)),
+    ...document.languages.map((item) => JSON.stringify(item)),
+    ...document.certificates.map((item) => JSON.stringify(item)),
+    ...document.awards.map((item) => JSON.stringify(item)),
+    ...document.activities.map((item) => JSON.stringify(item)),
+    ...document.publications.map((item) => JSON.stringify(item)),
+    ...document.references.map((item) => JSON.stringify(item)),
+    ...document.interests,
+  ]
 }
 
-function escapePdfText(text: string): string {
-  // PDF literal string with UTF-16BE BOM for non-Latin1; keep ASCII simple.
-  if (/^[\x20-\x7e]*$/.test(text)) {
-    return `(${text.replaceAll('\\', '\\\\').replaceAll('(', '\\(').replaceAll(')', '\\)')})`
+export async function renderResumePdf(document: ResumeDocument, outputPath: string): Promise<string> {
+  const font = findFont(linesForFont(document))
+  const { appearance } = document
+  const scale = appearance.scale === 'large' ? 1.1 : appearance.scale === 'small' ? 0.92 : 1
+  const gap = appearance.density === 'relaxed' ? 0.85 : appearance.density === 'compact' ? 0.4 : 0.6
+  const doc = new PDFDocument({
+    size: 'A4',
+    margins: { top: 42, right: 46, bottom: 46, left: 46 },
+    autoFirstPage: true,
+    bufferPages: false,
+    compress: true,
+  })
+  const stream = createWriteStream(outputPath)
+  const finished = new Promise<void>((resolve, reject) => {
+    stream.once('finish', resolve)
+    stream.once('error', reject)
+    doc.once('error', reject)
+  })
+  doc.pipe(stream)
+  const ink = appearance.ink || '#1c1917'
+  const accent = appearance.accent || ink
+  const paper = appearance.paper || '#ffffff'
+  function paintPage(): void {
+    if (paper.toLowerCase() === '#ffffff') return
+    doc.save().rect(0, 0, doc.page.width, doc.page.height).fill(paper).restore()
   }
-  const bom = [0xfe, 0xff]
-  const bytes: number[] = [...bom]
-  for (const char of text) {
-    const code = char.codePointAt(0)!
-    if (code > 0xffff) {
-      bytes.push(0xff, 0xfd)
-      continue
+  doc.on('pageAdded', paintPage)
+  paintPage()
+
+  function text(value: string, size = 10, color = ink): void {
+    if (!value.trim()) return
+    doc.fontSize(size * scale).fillColor(color).text(value.trim(), { lineGap: 2 })
+  }
+  function section(title: string): void {
+    if (doc.y > doc.page.height - 110) doc.addPage()
+    doc.moveDown(gap + 0.35)
+    text(title, 12, accent)
+    if (appearance.headingRule !== 'none') {
+      const y = doc.y + 2
+      doc.save().strokeColor(appearance.headingRule === 'accent' ? accent : '#d6d3d1')
+        .lineWidth(0.6).moveTo(doc.page.margins.left, y).lineTo(doc.page.width - doc.page.margins.right, y).stroke().restore()
+      doc.y = y + 5
     }
-    bytes.push((code >> 8) & 0xff, code & 0xff)
   }
-  return `<${Buffer.from(bytes).toString('hex')}>`
+  function entry(item: Entry): void {
+    if (!item.title && !item.summary && !item.bullets?.length) return
+    if (doc.y > doc.page.height - 90) doc.addPage()
+    doc.moveDown(gap * 0.55)
+    text(item.title, 10.5)
+    if (item.meta) text(item.meta, 9, '#57534e')
+    if (item.summary) text(item.summary)
+    for (const bullet of item.bullets ?? []) {
+      if (bullet.trim()) text(`- ${bullet}`, 9.5)
+    }
+    if (item.keywords?.some(Boolean)) text(item.keywords.filter(Boolean).join(' · '), 9, '#57534e')
+    if (item.url) text(item.url, 9, accent)
+  }
+  function sectionEntries(title: string, items: Entry[]): void {
+    if (!items.length) return
+    section(title)
+    for (const item of items) entry(item)
+  }
+  function period(start: string, end: string): string {
+    return [start, end || (start ? '至今' : '')].filter(Boolean).join(' — ')
+  }
+
+  try {
+    if (font) doc.font(font)
+    else doc.font('Helvetica')
+    text(document.basics.name || '未命名简历', 21)
+    text(document.basics.headline, 11, accent)
+    text([document.basics.phone, document.basics.email, document.basics.location].filter(Boolean).join(' · '), 9)
+    for (const link of document.basics.links) text([link.network, link.url || link.username].filter(Boolean).join('：'), 8.5)
+    const intention = [document.intention.role, document.intention.industry, document.intention.cities, document.intention.workType].filter(Boolean)
+    if (intention.length) text(`求职意向：${intention.join(' · ')}`, 9)
+    if (document.summary.trim()) {
+      section('职业摘要')
+      text(document.summary)
+    }
+
+    const experiences = document.experiences.map((item) => ({
+      title: [item.position, item.organization].filter(Boolean).join(' · '),
+      meta: [period(item.startDate, item.endDate), item.location].filter(Boolean).join('  |  '),
+      summary: item.summary,
+      bullets: item.highlights,
+      keywords: item.keywords,
+      url: item.url,
+    }))
+    const projects = document.projects.map((item) => ({
+      title: item.name,
+      meta: [item.role, item.entity, item.type, period(item.startDate, item.endDate)].filter(Boolean).join('  |  '),
+      summary: item.summary,
+      bullets: item.highlights,
+      keywords: item.keywords,
+      url: item.url,
+    }))
+    const education = document.education.map((item) => ({
+      title: [item.school, item.degree, item.area].filter(Boolean).join(' · '),
+      meta: [period(item.startDate, item.endDate), item.location, item.studyMode, item.score].filter(Boolean).join('  |  '),
+      summary: item.exchange,
+      bullets: item.courses,
+    }))
+    if (appearance.layout === 'educationFirst') {
+      sectionEntries('教育背景', education)
+      sectionEntries('工作与实习经历', experiences)
+    } else {
+      sectionEntries('工作与实习经历', experiences)
+      sectionEntries('教育背景', education)
+    }
+    sectionEntries('项目经历', projects)
+    sectionEntries('技能', document.skills.map((item) => ({
+      title: item.name,
+      meta: item.level,
+      keywords: item.keywords,
+    })))
+    sectionEntries('语言', document.languages.map((item) => ({
+      title: item.language,
+      meta: item.fluency,
+    })))
+    sectionEntries('证书', document.certificates.map((item) => ({
+      title: item.name,
+      meta: [item.issuer, item.date, item.expiryDate && `有效期至 ${item.expiryDate}`, item.credentialId].filter(Boolean).join('  |  '),
+      url: item.url,
+    })))
+    sectionEntries('荣誉', document.awards.map((item) => ({
+      title: item.title,
+      meta: [item.awarder, item.date].filter(Boolean).join('  |  '),
+      summary: item.summary,
+    })))
+    sectionEntries('校园与志愿', document.activities.map((item) => ({
+      title: [item.position, item.organization].filter(Boolean).join(' · '),
+      meta: [period(item.startDate, item.endDate), item.location].filter(Boolean).join('  |  '),
+      bullets: item.highlights,
+    })))
+    sectionEntries('发表与专利', document.publications.map((item) => ({
+      title: item.name,
+      meta: [item.type, item.publisher, item.date].filter(Boolean).join('  |  '),
+      url: item.url,
+    })))
+    if (document.interests.length) {
+      section('兴趣')
+      text(document.interests.join(' · '))
+    }
+    if (document.referencesOnRequest || document.references.length) {
+      section('推荐人')
+      if (document.referencesOnRequest && !document.references.length) text('如需要可提供')
+      for (const item of document.references) {
+        entry({
+          title: item.name,
+          meta: [item.relationship, item.organization, item.phone, item.email].filter(Boolean).join('  |  '),
+        })
+      }
+    }
+    doc.end()
+    await finished
+    return outputPath
+  } catch (error) {
+    stream.destroy()
+    await rm(outputPath, { force: true })
+    throw error
+  }
 }
 
-function buildContentStream(lines: string[]): string {
-  const ops: string[] = ['BT', '/F1 12 Tf', '50 780 Td', '16 TL']
-  for (const [index, line] of lines.entries()) {
-    if (index > 0) ops.push('T*')
-    ops.push(`${escapePdfText(line)} Tj`)
-  }
-  ops.push('ET')
-  return ops.join('\n')
-}
-
-function buildPdf(contentStream: string): Buffer {
-  const objects: string[] = []
-  objects.push('<< /Type /Catalog /Pages 2 0 R >>')
-  objects.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
-  objects.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>')
-  objects.push(`<< /Length ${Buffer.byteLength(contentStream, 'utf8')} >>\nstream\n${contentStream}\nendstream`)
-  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
-
-  let pdf = '%PDF-1.4\n'
-  const offsets = [0]
-  for (let i = 0; i < objects.length; i += 1) {
-    offsets.push(Buffer.byteLength(pdf, 'utf8'))
-    pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`
-  }
-  const xref = Buffer.byteLength(pdf, 'utf8')
-  pdf += `xref\n0 ${objects.length + 1}\n`
-  pdf += '0000000000 65535 f \n'
-  for (let i = 1; i < offsets.length; i += 1) {
-    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
-  return Buffer.from(pdf, 'utf8')
-}
