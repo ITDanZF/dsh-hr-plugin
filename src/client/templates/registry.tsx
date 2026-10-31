@@ -8,6 +8,8 @@ export function renderTemplate(draft: ResumeDraft): ReactNode {
     '--sheet-accent': appearance.accent,
     '--sheet-paper': appearance.paper,
     '--sheet-ink': appearance.ink,
+    '--sheet-pad': `${appearance.pageMarginMm}mm`,
+    '--sheet-line-height': appearance.lineHeight,
   } as CSSProperties
 
   if (appearance.layout === 'sidebar') {

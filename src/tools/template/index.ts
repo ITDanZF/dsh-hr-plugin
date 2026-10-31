@@ -145,8 +145,8 @@ export function registerResumeTemplateTools(ctx: Context, store: ResumeStore): v
 
   ctx.tools.register(defineTool({
     name: 'resume_set_paper',
-    description: `Set the paper color from the catalog. Marks the preset as custom. ${changesPaper}`,
-    parameters: { paper: { type: 'string', required: true, description: 'Paper color from the catalog' } },
+    description: `Set any six-digit hex paper color. Marks the preset as custom. ${changesPaper}`,
+    parameters: { paper: { type: 'string', required: true, description: 'Paper color such as #ffffff' } },
     output: resumeOutput,
     async execute(args, exec) {
       try { return await apply(exec, { paper: args.paper }) } catch (error) { return fail(error) }
@@ -155,8 +155,8 @@ export function registerResumeTemplateTools(ctx: Context, store: ResumeStore): v
 
   ctx.tools.register(defineTool({
     name: 'resume_set_ink',
-    description: `Set the ink color from the catalog. Marks the preset as custom. ${changesPaper}`,
-    parameters: { ink: { type: 'string', required: true, description: 'Ink color from the catalog' } },
+    description: `Set any six-digit hex ink color. Marks the preset as custom. ${changesPaper}`,
+    parameters: { ink: { type: 'string', required: true, description: 'Ink color such as #1c1917' } },
     output: resumeOutput,
     async execute(args, exec) {
       try { return await apply(exec, { ink: args.ink }) } catch (error) { return fail(error) }
@@ -165,11 +165,31 @@ export function registerResumeTemplateTools(ctx: Context, store: ResumeStore): v
 
   ctx.tools.register(defineTool({
     name: 'resume_set_accent',
-    description: `Set the accent color from the catalog. Marks the preset as custom. ${changesPaper}`,
-    parameters: { accent: { type: 'string', required: true, description: 'Accent color from the catalog' } },
+    description: `Set any six-digit hex accent color. Marks the preset as custom. ${changesPaper}`,
+    parameters: { accent: { type: 'string', required: true, description: 'Accent color such as #1d4e89' } },
     output: resumeOutput,
     async execute(args, exec) {
       try { return await apply(exec, { accent: args.accent }) } catch (error) { return fail(error) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'resume_set_page_margin',
+    description: `Set the page margin in millimeters, 8 to 26. Marks the preset as custom. ${changesPaper}`,
+    parameters: { pageMarginMm: { type: 'number', required: true, description: 'Page margin in millimeters, from 8 to 26' } },
+    output: resumeOutput,
+    async execute(args, exec) {
+      try { return await apply(exec, { pageMarginMm: args.pageMarginMm }) } catch (error) { return fail(error) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'resume_set_line_height',
+    description: `Set the body line height multiplier, 1.2 to 2. Marks the preset as custom. ${changesPaper}`,
+    parameters: { lineHeight: { type: 'number', required: true, description: 'Line height multiplier, from 1.2 to 2' } },
+    output: resumeOutput,
+    async execute(args, exec) {
+      try { return await apply(exec, { lineHeight: args.lineHeight }) } catch (error) { return fail(error) }
     },
   }))
 }

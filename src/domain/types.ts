@@ -170,6 +170,8 @@ export interface ResumeAppearance {
   showPhoto: boolean
   paper: string
   ink: string
+  pageMarginMm: number
+  lineHeight: number
 }
 
 export interface ResumeBasics {
@@ -235,6 +237,8 @@ export const classicAppearance: ResumeAppearance = {
   showPhoto: false,
   paper: '#ffffff',
   ink: '#1c1917',
+  pageMarginMm: 16,
+  lineHeight: 1.55,
 }
 
 export function createEmptyResume(): ResumeDocument {

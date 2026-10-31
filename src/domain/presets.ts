@@ -9,7 +9,7 @@ export interface StylePreset extends ResumeAppearance {
   name: string
 }
 
-const presetSeeds: Array<Omit<StylePreset, 'scale' | 'headerAlign' | 'nameRule' | 'headingRule' | 'keywordStyle' | 'datePlace'>> = [
+const presetSeeds: Array<Omit<StylePreset, 'scale' | 'headerAlign' | 'nameRule' | 'headingRule' | 'keywordStyle' | 'datePlace' | 'pageMarginMm' | 'lineHeight'>> = [
   { presetId: 'classic-serif', name: '经典衬线', layout: 'single', accent: '#1c1917', font: 'serif', density: 'normal', showPhoto: false, paper: '#ffffff', ink: '#1c1917' },
   { presetId: 'graduate', name: '应届清爽', layout: 'educationFirst', accent: '#1d4e89', font: 'sans', density: 'normal', showPhoto: false, paper: '#f7f9fc', ink: '#1c2430' },
   { presetId: 'sidebar-dark', name: '侧栏深色', layout: 'sidebar', accent: '#243833', font: 'sans', density: 'normal', showPhoto: true, paper: '#f7f6f3', ink: '#1c1917' },
@@ -38,6 +38,8 @@ export const stylePresets: StylePreset[] = presetSeeds.map((preset) => ({
   headingRule: 'hairline',
   keywordStyle: 'chips',
   datePlace: 'end',
+  pageMarginMm: preset.density === 'compact' ? 12 : preset.density === 'relaxed' ? 18 : 16,
+  lineHeight: preset.density === 'compact' ? 1.4 : preset.density === 'relaxed' ? 1.7 : 1.55,
 }))
 
 export function appearanceFromPreset(preset: StylePreset): ResumeAppearance {

@@ -9,6 +9,7 @@ import { ResumeForm } from './form/ResumeForm.js'
 import { HarnessTheme } from './HarnessTheme.js'
 import { panelCss } from './panel.css.js'
 import { StyleRail } from './templates/StyleRail.js'
+import { TemplatePreview } from './templates/TemplatePreview.js'
 import { renderTemplate } from './templates/registry.js'
 
 const STYLE_ID = 'dsh-hr-panel-style'
@@ -48,6 +49,7 @@ function SessionPanel({ sessionId, panelRef }: { sessionId?: string; panelRef: R
   const [initial] = useState(() => sessionId ? pendingDrafts.get(sessionId) ?? readPendingDraft(sessionId) : undefined)
   const [otherPending, setOtherPending] = useState(() => sessionId && !initial ? readOtherPendingDraft(sessionId) : undefined)
   const [view, setView] = useState<'edit' | 'template'>('edit')
+  const [templateSettingsOpen, setTemplateSettingsOpen] = useState(true)
   const [catalog, setCatalog] = useState<ResumeCatalog>(() => defaultCatalog())
   const [draft, setDraft] = useState<ResumeDraft>(() => initial?.document ?? (sessionId ? createEmptyResume() : createSampleDraft()))
   const [status, setStatus] = useState<SaveStatus>(() => sessionId ? (initial ? 'editing' : 'loading') : 'preview')
@@ -259,7 +261,7 @@ function SessionPanel({ sessionId, panelRef }: { sessionId?: string; panelRef: R
 
   useEffect(() => {
     panelRef.current?.querySelector('.hr-body')?.scrollTo({ top: 0 })
-  }, [view, draft.appearance.presetId])
+  }, [view])
 
   const ready = status !== 'loading' && !(status === 'load-error' && !revisionRef.current)
   const statusText: Record<SaveStatus, string> = {
@@ -321,8 +323,8 @@ function SessionPanel({ sessionId, panelRef }: { sessionId?: string; panelRef: R
               </div>
               {view === 'template' ? (
                 <div className="template-split">
-                  <StyleRail draft={draft} catalog={catalog} onChange={edit} />
-                  <div className="stage">{renderTemplate(draft)}</div>
+                  <StyleRail draft={draft} catalog={catalog} onChange={edit} autoSave={Boolean(sessionId)} hidden={!templateSettingsOpen} onCollapse={() => setTemplateSettingsOpen(false)} />
+                  <TemplatePreview draft={draft} settingsOpen={templateSettingsOpen} onToggleSettings={() => setTemplateSettingsOpen((open) => !open)} />
                 </div>
               ) : null}
             </>

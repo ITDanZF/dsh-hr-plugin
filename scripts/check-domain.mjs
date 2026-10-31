@@ -69,6 +69,12 @@ assert.deepEqual(interests.interests, ['notation'])
 const styled = setAppearance(interests, { font: 'sans' })
 assert.equal(styled.appearance.font, 'sans')
 assert.equal(styled.appearance.presetId, 'custom')
+const tailored = setAppearance(styled, { accent: '#a12b3c', paper: '#fffaf0', pageMarginMm: 22, lineHeight: 1.8 })
+assert.equal(tailored.appearance.accent, '#a12b3c')
+assert.equal(tailored.appearance.pageMarginMm, 22)
+assert.deepEqual(parseResume(tailored).appearance, tailored.appearance)
+assert.throws(() => setAppearance(styled, { accent: 'red' }), ResumeDomainError)
+assert.throws(() => setAppearance(styled, { pageMarginMm: 40 }), ResumeDomainError)
 
 const preset = applyPreset(styled, 'magazine')
 assert.equal(preset.appearance.presetId, 'magazine')
@@ -81,6 +87,10 @@ delete legacy.sectionOrder
 delete legacy.sectionPlacement
 delete legacy.customSections
 const migrated = parseResume(legacy)
+delete legacy.appearance.pageMarginMm
+delete legacy.appearance.lineHeight
+assert.equal(parseResume(legacy).appearance.pageMarginMm, 18)
+assert.equal(parseResume(legacy).appearance.lineHeight, 1.7)
 assert.ok(migrated.sectionOrder.includes('experience'))
 assert.ok(migrated.sectionOrder.includes('summary'))
 assert.ok(migrated.sectionOrder.includes('languages') === false)
@@ -101,9 +111,6 @@ assert.throws(() => removeEntry(removed, 'experiences', 'missing'), (error) => {
   return true
 })
 
-assert.throws(() => setAppearance(preset, { accent: '#ff00ff' }), (error) => {
-  assert.ok(error instanceof ResumeDomainError)
-  return true
-})
+assert.equal(setAppearance(preset, { accent: '#ff00ff' }).appearance.accent, '#ff00ff')
 
 console.log('domain checks passed')

@@ -31,9 +31,10 @@ export async function renderResumePdf(document: ResumeDocument, outputPath: stri
   const { appearance } = document
   const scale = appearance.scale === 'large' ? 1.1 : appearance.scale === 'small' ? 0.92 : 1
   const gap = appearance.density === 'relaxed' ? 0.85 : appearance.density === 'compact' ? 0.4 : 0.6
+  const margin = appearance.pageMarginMm * 72 / 25.4
   const doc = new PDFDocument({
     size: 'A4',
-    margins: { top: 42, right: 46, bottom: 46, left: 46 },
+    margins: { top: margin, right: margin, bottom: margin, left: margin },
     autoFirstPage: true,
     bufferPages: false,
     compress: true,
@@ -57,7 +58,7 @@ export async function renderResumePdf(document: ResumeDocument, outputPath: stri
 
   function text(value: string, size = 10, color = ink): void {
     if (!value.trim()) return
-    doc.fontSize(size * scale).fillColor(color).text(value.trim(), { lineGap: 2 })
+    doc.fontSize(size * scale).fillColor(color).text(value.trim(), { lineGap: Math.max(0, 2 + (appearance.lineHeight - 1.55) * size) })
   }
   function section(title: string): void {
     if (doc.y > doc.page.height - 110) doc.addPage()
@@ -101,16 +102,16 @@ export async function renderResumePdf(document: ResumeDocument, outputPath: stri
     if (appearance.showPhoto && document.basics.photo) {
       const encoded = document.basics.photo.slice(document.basics.photo.indexOf(',') + 1)
       const photo = Buffer.from(encoded, 'base64')
-      doc.image(photo, doc.page.width - 118, 42, { fit: [72, 96] })
-      doc.page.margins.right = 132
+      doc.image(photo, doc.page.width - margin - 72, margin, { fit: [72, 96] })
+      doc.page.margins.right = margin + 86
     }
     text(document.basics.name || '未命名简历', 21)
     text(document.basics.headline, 11, accent)
     text([document.basics.phone, document.basics.email, document.basics.location].filter(Boolean).join(' · '), 9)
     for (const link of document.basics.links) text([link.network, link.url || link.username].filter(Boolean).join('：'), 8.5)
-    if (doc.page.margins.right === 132) {
-      doc.y = Math.max(doc.y, 148)
-      doc.page.margins.right = 46
+    if (doc.page.margins.right === margin + 86) {
+      doc.y = Math.max(doc.y, margin + 106)
+      doc.page.margins.right = margin
     }
     const experiences = document.experiences.map((item) => ({
       title: [item.position, item.organization].filter(Boolean).join(' · '),

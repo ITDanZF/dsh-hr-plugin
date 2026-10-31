@@ -136,6 +136,8 @@ const appearance = z.object({
   showPhoto: z.boolean(),
   paper: z.string(),
   ink: z.string(),
+  pageMarginMm: z.number().min(8).max(26).optional(),
+  lineHeight: z.number().min(1.2).max(2).optional(),
 })
 
 const catalogOption = z.object({

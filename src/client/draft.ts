@@ -302,6 +302,8 @@ export function createSampleDraft(): ResumeDraft {
       showPhoto: false,
       paper: '#ffffff',
       ink: '#1c1917',
+      pageMarginMm: 16,
+      lineHeight: 1.55,
     },
   }
 }

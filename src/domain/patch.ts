@@ -159,7 +159,11 @@ export function setAppearance(document: ResumeDocument, patch: Partial<ResumeApp
   const appearance = next.appearance
   if (patch.layout !== undefined) appearance.layout = requireListed(patch.layout, sheetLayouts, 'layout', 'layout')
   if (patch.font !== undefined) appearance.font = requireListed(patch.font, sheetFonts, 'font', 'font')
-  if (patch.density !== undefined) appearance.density = requireListed(patch.density, sheetDensities, 'density', 'density')
+  if (patch.density !== undefined) {
+    appearance.density = requireListed(patch.density, sheetDensities, 'density', 'density')
+    if (patch.pageMarginMm === undefined) appearance.pageMarginMm = appearance.density === 'compact' ? 12 : appearance.density === 'relaxed' ? 18 : 16
+    if (patch.lineHeight === undefined) appearance.lineHeight = appearance.density === 'compact' ? 1.4 : appearance.density === 'relaxed' ? 1.7 : 1.55
+  }
   if (patch.scale !== undefined) appearance.scale = requireListed(patch.scale, sheetScales, 'scale', 'scale')
   if (patch.headerAlign !== undefined) appearance.headerAlign = requireListed(patch.headerAlign, headerAligns, 'headerAlign', 'headerAlign')
   if (patch.nameRule !== undefined) appearance.nameRule = requireListed(patch.nameRule, nameRules, 'nameRule', 'nameRule')
@@ -170,9 +174,11 @@ export function setAppearance(document: ResumeDocument, patch: Partial<ResumeApp
     if (typeof patch.showPhoto !== 'boolean') throw new ResumeDomainError('showPhoto must be a boolean')
     appearance.showPhoto = patch.showPhoto
   }
-  if (patch.accent !== undefined) appearance.accent = requireChoice(patch.accent, catalogValues('accent'), 'accent')
-  if (patch.paper !== undefined) appearance.paper = requireChoice(patch.paper, catalogValues('paper'), 'paper')
-  if (patch.ink !== undefined) appearance.ink = requireChoice(patch.ink, catalogValues('ink'), 'ink')
+  if (patch.accent !== undefined) appearance.accent = requireHexColor(patch.accent, 'accent')
+  if (patch.paper !== undefined) appearance.paper = requireHexColor(patch.paper, 'paper')
+  if (patch.ink !== undefined) appearance.ink = requireHexColor(patch.ink, 'ink')
+  if (patch.pageMarginMm !== undefined) appearance.pageMarginMm = requireNumber(patch.pageMarginMm, 8, 26, 'pageMarginMm')
+  if (patch.lineHeight !== undefined) appearance.lineHeight = requireNumber(patch.lineHeight, 1.2, 2, 'lineHeight')
   appearance.presetId = 'custom'
   return next
 }
@@ -260,12 +266,13 @@ function readEntries<C extends EntryCollection>(collection: C, value: unknown): 
 }
 
 function readAppearance(record: Record<string, unknown>, fallbackPreset: string): ResumeAppearance {
+  const density = requireEnum(record.density, sheetDensities, 'appearance.density')
   return {
     presetId: typeof record.presetId === 'string' && record.presetId.trim() ? record.presetId : fallbackPreset,
     layout: requireEnum(record.layout, sheetLayouts, 'appearance.layout'),
-    accent: requireString(record.accent, 'appearance.accent'),
+    accent: requireHexColor(record.accent, 'appearance.accent'),
     font: requireEnum(record.font, sheetFonts, 'appearance.font'),
-    density: requireEnum(record.density, sheetDensities, 'appearance.density'),
+    density,
     scale: requireEnum(record.scale, sheetScales, 'appearance.scale'),
     headerAlign: requireEnum(record.headerAlign, headerAligns, 'appearance.headerAlign'),
     nameRule: requireEnum(record.nameRule, nameRules, 'appearance.nameRule'),
@@ -273,8 +280,10 @@ function readAppearance(record: Record<string, unknown>, fallbackPreset: string)
     keywordStyle: requireEnum(record.keywordStyle, keywordStyles, 'appearance.keywordStyle'),
     datePlace: requireEnum(record.datePlace, datePlaces, 'appearance.datePlace'),
     showPhoto: requireBoolean(record.showPhoto, 'appearance.showPhoto'),
-    paper: requireString(record.paper, 'appearance.paper'),
-    ink: requireString(record.ink, 'appearance.ink'),
+    paper: requireHexColor(record.paper, 'appearance.paper'),
+    ink: requireHexColor(record.ink, 'appearance.ink'),
+    pageMarginMm: record.pageMarginMm === undefined ? density === 'compact' ? 12 : density === 'relaxed' ? 18 : 16 : requireNumber(record.pageMarginMm, 8, 26, 'appearance.pageMarginMm'),
+    lineHeight: record.lineHeight === undefined ? density === 'compact' ? 1.4 : density === 'relaxed' ? 1.7 : 1.55 : requireNumber(record.lineHeight, 1.2, 2, 'appearance.lineHeight'),
   }
 }
 
@@ -445,11 +454,16 @@ function requireEnum<T extends string>(value: unknown, allowed: readonly T[], la
   throw new ResumeDomainError(`${label} must be one of: ${allowed.join(', ')}`)
 }
 
-function requireChoice(value: unknown, allowed: readonly string[], label: string): string {
-  if (typeof value !== 'string') throw new ResumeDomainError(`${label} must be a string`)
-  const match = allowed.find((item) => item.toLowerCase() === value.toLowerCase())
-  if (!match) throw new ResumeDomainError(`${label} must be one of: ${allowed.join(', ')}`)
-  return match
+function requireHexColor(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) throw new ResumeDomainError(`${label} must be a six-digit hex color`)
+  return value.toLowerCase()
+}
+
+function requireNumber(value: unknown, min: number, max: number, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+    throw new ResumeDomainError(`${label} must be between ${min} and ${max}`)
+  }
+  return value
 }
 
 function text(value: unknown): string {
