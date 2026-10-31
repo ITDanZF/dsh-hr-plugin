@@ -1,7 +1,22 @@
 {
   "name": "dsh-hr-plugin",
   "version": "0.1.0",
+  "description": "在 DeepSeek Harness 里，一份会话一份简历。对话和右侧面板改的是同一份草稿，可以换模板并下载 PDF。",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "resume"
+  ],
+  "author": "hejinyu <hejinyuhello@gmail.com>",
   "license": "MIT",
+  "homepage": "https://github.com/ITDanZF/dsh-hr-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/ITDanZF/dsh-hr-plugin/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ITDanZF/dsh-hr-plugin.git"
+  },
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -23,6 +38,7 @@
     "assets"
   ],
   "scripts": {
+    "prepublishOnly": "pnpm run build",
     "build": "tsc && node scripts/bundle-client.mjs",
     "dev:panel": "vite",
     "check:domain": "pnpm run build && node scripts/check-domain.mjs",
@@ -31,7 +47,7 @@
   },
   "engines": {
     "node": ">=22.19",
-    "dsh": ">=0.2.1-rc.2 <0.3.0"
+    "dsh": ">=0.2.1-rc.5 <0.3.0"
   },
   "packageManager": "pnpm@11.7.0",
   "dsh": {
@@ -54,7 +70,7 @@
     "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2",
     "@deepseek-ai/dsh-skill": "0.2.1-rc.2",
     "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
     "react": "^19.0.0"
   },
@@ -66,7 +82,7 @@
     "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2",
     "@deepseek-ai/dsh-skill": "0.2.1-rc.2",
     "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
     "@types/node": "^22.19.0",
     "@types/pdfkit": "0.17.7",
@@ -81,7 +97,7 @@
     "zod": "4.6.7"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.5",
     "antd": "^5.29.3",
     "dayjs": "^1.11.23",
     "pdfkit": "0.17.2",
