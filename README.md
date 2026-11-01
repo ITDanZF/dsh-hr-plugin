@@ -6,6 +6,8 @@
 dsh plugin --profile web add dsh-hr-plugin
 ```
 
+包页面：https://www.npmjs.com/package/dsh-hr-plugin
+
 装完后重启这个 profile。需要本机已安装 `dsh` 0.2.1-rc.5 到 0.3.0 之前的版本。
 
 ## 界面
