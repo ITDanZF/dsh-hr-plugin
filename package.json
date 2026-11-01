@@ -1,6 +1,6 @@
 {
   "name": "dsh-hr-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "在 DeepSeek Harness 里，一份会话一份简历。对话和右侧面板改的是同一份草稿，可以换模板并下载 PDF。",
   "keywords": [
     "dsh-plugin",
@@ -44,7 +44,8 @@
     "check:domain": "pnpm run build && node scripts/check-domain.mjs",
     "check:preview": "pnpm run build && node scripts/check-preview.mjs",
     "check:merge": "pnpm run build && node scripts/check-merge.mjs",
-    "check:manifest": "node scripts/check-manifest.mjs"
+    "check:manifest": "node scripts/check-manifest.mjs",
+    "check:pdf": "pnpm run build && node scripts/check-pdf.mjs"
   },
   "engines": {
     "node": ">=22.19",

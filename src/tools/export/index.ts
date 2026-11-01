@@ -16,7 +16,7 @@ import { requireSessionId } from '../shared/session.js'
 export function registerResumeExportPdfTool(ctx: Context, store: ResumeStore): void {
   ctx.tools.register(defineTool({
     name: 'resume_export_pdf',
-    description: 'Export the current session resume to a readable multipage PDF with Chinese font support and basic appearance. Returns JSON with ok and path, or ok false and error. Does not change the resume.',
+    description: 'Export the current session resume to a multipage PDF using the current template layout, including sidebar, top bar, header, dates, and keywords, with Chinese font support. Returns JSON with ok and path, or ok false and error. Does not change the resume.',
     parameters: {},
     output: {
       schema: resumeToolResultSchema,
