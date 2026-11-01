@@ -43,7 +43,8 @@
     "dev:panel": "vite",
     "check:domain": "pnpm run build && node scripts/check-domain.mjs",
     "check:preview": "pnpm run build && node scripts/check-preview.mjs",
-    "check:merge": "pnpm run build && node scripts/check-merge.mjs"
+    "check:merge": "pnpm run build && node scripts/check-merge.mjs",
+    "check:manifest": "node scripts/check-manifest.mjs"
   },
   "engines": {
     "node": ">=22.19",
