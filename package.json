@@ -1,6 +1,6 @@
 {
   "name": "dsh-hr-plugin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "在 DeepSeek Harness 里，一份会话一份简历。对话和右侧面板改的是同一份草稿，可以换模板并下载 PDF。",
   "keywords": [
     "dsh-plugin",
