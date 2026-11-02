@@ -33,9 +33,9 @@ export type CustomFieldType = 'text' | 'longText' | 'dateRange' | 'link' | 'bull
 export interface CustomField { id: string; label: string; type: CustomFieldType; value: string }
 export interface CustomSection { id: string; title: string; fields: CustomField[] }
 
-export const accentValues = ['#1c1917', '#1d4e89', '#1e3330', '#8a4b2f', '#3f4a57', '#3d348b'] as const
-export const paperValues = ['#ffffff', '#f4f6f8', '#faf6f0', '#f6efe6', '#f7f9fc'] as const
-export const inkValues = ['#1c1917', '#111111', '#3a2418', '#1c2430'] as const
+export const accentValues = ['#30383d', '#285e89', '#24433f', '#9a5a3f', '#566973', '#444766'] as const
+export const paperValues = ['#ffffff', '#f9fbfb', '#fffcf7', '#fffbf4', '#fffefa'] as const
+export const inkValues = ['#26332f', '#20282d', '#342824', '#203142'] as const
 
 export interface ResumeLink {
   id: string
@@ -225,20 +225,20 @@ export class ResumeDomainError extends Error {
 export const classicAppearance: ResumeAppearance = {
   presetId: 'classic-serif',
   layout: 'single',
-  accent: '#1c1917',
+  accent: '#40524b',
   font: 'serif',
   density: 'normal',
   scale: 'medium',
   headerAlign: 'left',
   nameRule: 'short',
-  headingRule: 'hairline',
-  keywordStyle: 'chips',
+  headingRule: 'none',
+  keywordStyle: 'text',
   datePlace: 'end',
   showPhoto: false,
-  paper: '#ffffff',
-  ink: '#1c1917',
-  pageMarginMm: 16,
-  lineHeight: 1.55,
+  paper: '#fffefa',
+  ink: '#26332f',
+  pageMarginMm: 17,
+  lineHeight: 1.58,
 }
 
 export function createEmptyResume(): ResumeDocument {

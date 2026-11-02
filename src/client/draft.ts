@@ -27,6 +27,7 @@ export type {
   WorkType,
 } from '../domain/index.js'
 
+import { classicAppearance } from '../domain/index.js'
 import type { ResumeDocument as ResumeDraft } from '../domain/index.js'
 import type {
   ActivityItem,
@@ -287,23 +288,6 @@ export function createSampleDraft(): ResumeDraft {
     sectionOrder: ['summary', 'intention', 'experience', 'projects', 'education', 'skills', 'languages', 'certificates', 'awards', 'activities', 'interests', 'references'],
     sectionPlacement: {},
     customSections: [],
-    appearance: {
-      presetId: 'classic-serif',
-      layout: 'single',
-      accent: '#1c1917',
-      font: 'serif',
-      density: 'normal',
-      scale: 'medium',
-      headerAlign: 'left',
-      nameRule: 'short',
-      headingRule: 'hairline',
-      keywordStyle: 'chips',
-      datePlace: 'end',
-      showPhoto: false,
-      paper: '#ffffff',
-      ink: '#1c1917',
-      pageMarginMm: 16,
-      lineHeight: 1.55,
-    },
+    appearance: { ...classicAppearance },
   }
 }

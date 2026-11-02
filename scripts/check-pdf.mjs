@@ -64,20 +64,23 @@ function findRole(marks, role, includes) {
 }
 
 const classic = layout(resume('classic-serif'))
+const ats = layout(resume('ats-simple'))
 const graduate = layout(resume('graduate'))
 const sidebar = layout(resume('sidebar-dark'))
+assert.equal(ats.marks.some((mark) => mark.role === 'sidebar' || mark.role === 'graduate-bar' || mark.kind === 'chip'), false)
+assert.equal(resume('ats-simple').appearance.showPhoto, false)
 assert.equal(classic.marks.some((mark) => mark.role === 'graduate-bar'), false)
 const bar = graduate.marks.find((mark) => mark.role === 'graduate-bar')
 assert.equal(bar?.page, 1)
 assert.ok(bar.y < 1)
 assert.ok(bar.width > graduate.pageWidth * 0.95)
-assert.equal(bar.color.toLowerCase(), '#1d4e89')
-assert.equal(bar.height, 8)
+assert.equal(bar.color.toLowerCase(), resume('graduate').appearance.accent)
+assert.equal(bar.height, 3)
 
 const sideFill = sidebar.marks.find((mark) => mark.role === 'sidebar')
 assert.equal(sideFill.x, 0)
 assert.ok(Math.abs(sideFill.width - 68 * MM) < 0.01)
-assert.equal(sideFill.color.toLowerCase(), '#243833')
+assert.equal(sideFill.color.toLowerCase(), resume('sidebar-dark').appearance.accent)
 const skill = findRole(sidebar.marks, 'body', '产品工具')
 const job = findRole(sidebar.marks, 'title', '产品经理')
 assert.ok(skill.x < sidebar.sidebarWidth, 'skills stay in the left column')
@@ -88,7 +91,7 @@ moved.sectionPlacement = { skills: 'main' }
 const movedLayout = layout(moved)
 assert.ok(findRole(movedLayout.marks, 'body', '产品工具').x >= movedLayout.sidebarWidth)
 
-assert.ok(classic.marks.some((mark) => mark.role === 'name-rule' && mark.width === 36))
+assert.ok(classic.marks.some((mark) => mark.role === 'name-rule' && mark.width === 24))
 const noRule = resume('classic-serif')
 noRule.appearance = { ...noRule.appearance, nameRule: 'none' }
 assert.equal(layout(noRule).marks.some((mark) => mark.role === 'name-rule'), false)
@@ -112,12 +115,17 @@ const belowTitle = findRole(belowLayout.marks, 'title', '星澜科技')
 const belowDate = findRole(belowLayout.marks, 'date', '2022.03')
 assert.ok(belowDate.y > belowTitle.y)
 
-assert.ok(classic.marks.some((mark) => mark.kind === 'chip' && mark.text === 'Figma'))
-const asText = resume('classic-serif')
+assert.ok(layout(resume('product-blue')).marks.some((mark) => mark.kind === 'chip' && mark.text === 'Figma'))
+const asText = resume('product-blue')
 asText.appearance = { ...asText.appearance, keywordStyle: 'text' }
 const textLayout = layout(asText)
 assert.equal(textLayout.marks.some((mark) => mark.kind === 'chip'), false)
 assert.ok(textLayout.marks.some((mark) => mark.role === 'keyword' && mark.text.includes('Figma、SQL')))
+const longKeyword = resume('product-blue')
+longKeyword.experiences[0].keywords = ['LongTechnicalKeywordWithoutNaturalBreaks'.repeat(4)]
+const longKeywordLayout = layout(longKeyword)
+assert.equal(longKeywordLayout.marks.some((mark) => mark.kind === 'chip'), false)
+assert.ok(longKeywordLayout.marks.some((mark) => mark.role === 'keyword'))
 
 assert.ok(classic.marks.some((mark) => mark.role === 'section' && mark.text === '校园、社团与志愿'))
 assert.ok(classic.marks.some((mark) => mark.role === 'body' && mark.text === '阅读；徒步'))
@@ -126,7 +134,13 @@ const long = resume('sidebar-dark')
 long.experiences[0].highlights = Array.from({ length: 80 }, (_, index) => `补充说明 ${index}：把审批时长从 2.4 天降到 1.1 天`)
 const longLayout = layout(long)
 assert.ok(longLayout.pageCount >= 2)
-assert.ok(longLayout.marks.some((mark) => mark.role === 'sidebar' && mark.page === 2))
+assert.equal(longLayout.marks.some((mark) => mark.role === 'sidebar' && mark.page === 2), false)
+assert.ok(longLayout.marks.some((mark) => mark.role === 'body' && mark.page === 2 && mark.x < longLayout.sidebarWidth))
+
+const longSide = resume('sidebar-dark')
+longSide.skills = Array.from({ length: 65 }, (_, index) => ({ id: `skill-${index}`, name: `专业技能 ${index}`, level: '熟练', keywords: ['分析与规划'] }))
+const longSideLayout = layout(longSide)
+assert.ok(longSideLayout.marks.some((mark) => mark.role === 'sidebar' && mark.page === 2))
 
 const longParagraph = resume('classic-serif')
 const repeated = '一段很长的项目说明。'.repeat(1000)
@@ -194,19 +208,19 @@ function pdfStreams(buffer) {
 }
 
 const classicPdf = await renderResumePdfBuffer(resume('classic-serif'))
+const atsPdf = await renderResumePdfBuffer(resume('ats-simple'))
 const graduatePdf = await renderResumePdfBuffer(resume('graduate'))
 const sidebarPdf = await renderResumePdfBuffer(resume('sidebar-dark'))
 const longPdf = await renderResumePdfBuffer(long)
 const paragraphPdf = await renderResumePdfBuffer(longParagraph)
-for (const buffer of [classicPdf, graduatePdf, sidebarPdf, longPdf, paragraphPdf]) {
+for (const buffer of [classicPdf, atsPdf, graduatePdf, sidebarPdf, longPdf, paragraphPdf]) {
   assert.equal(buffer.subarray(0, 5).toString(), '%PDF-')
 }
 assert.ok((paragraphPdf.toString('latin1').match(/\/Type \/Page(?!s)/g) ?? []).length >= 2)
-assert.ok(pdfStreams(graduatePdf).includes(colorOp('#1d4e89')))
+assert.ok(pdfStreams(graduatePdf).includes(colorOp(resume('graduate').appearance.accent)))
 const sidebarStream = pdfStreams(longPdf)
-const sidebarColor = colorOp('#243833')
+const sidebarColor = colorOp(resume('sidebar-dark').appearance.accent)
 assert.ok(sidebarStream.includes(sidebarColor))
-assert.ok(sidebarStream.split(sidebarColor).length - 1 >= 2)
 assert.ok((longPdf.toString('latin1').match(/\/Type \/Page(?!s)/g) ?? []).length >= 2)
 
 const withPhoto = resume('classic-serif')
@@ -226,8 +240,10 @@ assert.equal((await renderResumePdfBuffer(monoResume)).subarray(0, 5).toString()
 const directory = process.env.DSH_HR_PDF_OUT
 if (directory) {
   await writeFile(path.join(directory, 'classic.pdf'), classicPdf)
+  await writeFile(path.join(directory, 'ats.pdf'), atsPdf)
   await writeFile(path.join(directory, 'graduate.pdf'), graduatePdf)
   await writeFile(path.join(directory, 'sidebar.pdf'), sidebarPdf)
+  await writeFile(path.join(directory, 'sidebar-long.pdf'), longPdf)
   console.log(`pdf layout check passed\n${directory}`)
 } else {
   console.log('pdf layout check passed')

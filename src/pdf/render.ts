@@ -42,6 +42,12 @@ export interface PdfLayout {
 const MM = 72 / 25.4
 const SIDEBAR_MM = 68
 const SIDE_SECTIONS = new Set(['skills', 'languages', 'interests'])
+
+function mixHex(foreground: string, background: string, ratio: number): string {
+  const channel = (hex: string, index: number) => Number.parseInt(hex.slice(index, index + 2), 16)
+  if (!/^#[0-9a-f]{6}$/i.test(foreground) || !/^#[0-9a-f]{6}$/i.test(background)) return foreground
+  return `#${[1, 3, 5].map((index) => Math.round(channel(foreground, index) * ratio + channel(background, index) * (1 - ratio)).toString(16).padStart(2, '0')).join('')}`
+}
 const sansCjk = fileURLToPath(CJK_FONT_ASSET_URLS['NotoSansSC-Regular.otf']())
 const serifCjk = fileURLToPath(CJK_FONT_ASSET_URLS['NotoSerifSC-Regular.otf']())
 const bundledFonts = {
@@ -218,8 +224,8 @@ export function layoutResumePdf(
   readPhoto(document)
   const { appearance } = document
   const scale = appearance.scale === 'large' ? 1.1 : appearance.scale === 'small' ? 0.92 : 1
-  const blockGap = appearance.density === 'relaxed' ? 16 : appearance.density === 'compact' ? 8 : 12
-  const entryGap = appearance.density === 'relaxed' ? 10 : appearance.density === 'compact' ? 6 : 8
+  const blockGap = appearance.density === 'relaxed' ? 18 : appearance.density === 'compact' ? 10.5 : 15
+  const entryGap = appearance.density === 'relaxed' ? 15 : appearance.density === 'compact' ? 9 : 12
   const margin = appearance.pageMarginMm * MM
   const sidebarWidth = SIDEBAR_MM * MM
   const ink = appearance.ink || '#1c1917'
@@ -228,9 +234,10 @@ export function layoutResumePdf(
   const sidebar = appearance.layout === 'sidebar'
   const content: PdfMark[] = []
   let pageCount = 1
+  let lastSidePage = Number.POSITIVE_INFINITY
 
   function lineGapFor(fontSize: number): number {
-    return Math.max(0, 2 + (appearance.lineHeight - 1.55) * fontSize)
+    return Math.max(0, (appearance.lineHeight - 1.2) * fontSize)
   }
 
   function openFrame(x: number, width: number, textInk: string, muted: string, rule: string, chip: string): Frame {
@@ -238,23 +245,31 @@ export function layoutResumePdf(
   }
 
   const main = sidebar
-    ? openFrame(sidebarWidth + margin * 0.8, page.width - sidebarWidth - margin * 1.6, ink, '#57534e', appearance.headingRule === 'accent' ? accent : '#d6d3d1', '#efeae4')
-    : openFrame(margin, page.width - margin * 2, ink, '#57534e', appearance.headingRule === 'accent' ? accent : '#d6d3d1', '#efeae4')
+    ? openFrame(sidebarWidth + margin * 0.8, page.width - sidebarWidth - margin * 1.6, ink, mixHex(ink, paper, 0.72), appearance.headingRule === 'accent' ? accent : mixHex(accent, paper, 0.25), mixHex(accent, paper, 0.09))
+    : openFrame(margin, page.width - margin * 2, ink, mixHex(ink, paper, 0.72), appearance.headingRule === 'accent' ? accent : mixHex(accent, paper, 0.25), mixHex(accent, paper, 0.09))
   const side = openFrame(
     margin * 0.55,
     sidebarWidth - margin * 1.1,
-    paper,
-    paper,
-    paper,
-    '#d5dbd8',
+    '#ffffff',
+    mixHex('#ffffff', accent, 0.8),
+    mixHex('#ffffff', accent, 0.32),
+    mixHex('#ffffff', accent, 0.14),
   )
   const headerFrame = sidebar ? side : main
 
+  function nextFramePage(frame: Frame): void {
+    frame.page += 1
+    frame.y = frame.top
+    if (sidebar && frame === main && frame.page > lastSidePage) {
+      frame.x = margin
+      frame.width = page.width - margin * 2
+    }
+    pageCount = Math.max(pageCount, frame.page)
+  }
+
   function advance(frame: Frame, height: number): { page: number, y: number } {
     if (frame.y > frame.top + 0.5 && frame.y + height > frame.bottom) {
-      frame.page += 1
-      frame.y = frame.top
-      pageCount = Math.max(pageCount, frame.page)
+      nextFramePage(frame)
     }
     const at = { page: frame.page, y: frame.y }
     frame.y += height
@@ -275,9 +290,7 @@ export function layoutResumePdf(
     let remaining = [...text]
     while (remaining.length) {
       if (frame.bottom - frame.y < fontSize + lineGap) {
-        frame.page += 1
-        frame.y = frame.top
-        pageCount = Math.max(pageCount, frame.page)
+        nextFramePage(frame)
       }
       const available = frame.bottom - frame.y
       let low = 1
@@ -292,9 +305,7 @@ export function layoutResumePdf(
         } else high = middle - 1
       }
       if (!count) {
-        frame.page += 1
-        frame.y = frame.top
-        pageCount = Math.max(pageCount, frame.page)
+        nextFramePage(frame)
         continue
       }
       const chunk = remaining.slice(0, count).join('')
@@ -312,9 +323,11 @@ export function layoutResumePdf(
   }
 
   function writeSection(frame: Frame, title: string): void {
+    const minimumWithFirstLine = blockGap + 11.5 * scale * 2 + 10 * scale * 1.5
+    if (frame.y > frame.top && frame.bottom - frame.y < minimumWithFirstLine) nextFramePage(frame)
     if (frame.y > frame.top) advance(frame, blockGap)
-    writeText(frame, title, 12 * scale, frame.ink, 'section')
-    if (appearance.headingRule === 'none') return
+    writeText(frame, title, 11.5 * scale, frame === side ? '#ffffff' : accent, 'section')
+    if (appearance.headingRule === 'none') { advance(frame, 4); return }
     const at = advance(frame, 7)
     content.push({
       kind: 'rule',
@@ -333,7 +346,7 @@ export function layoutResumePdf(
   }
 
   function writeDateTitle(frame: Frame, title: string, date: string): void {
-    const titleSize = 10.5 * scale
+    const titleSize = 11.25 * scale
     const dateSize = 9 * scale
     if (appearance.datePlace === 'end' && date.trim()) {
       const lineGap = lineGapFor(titleSize)
@@ -355,19 +368,24 @@ export function layoutResumePdf(
   function writeKeywords(frame: Frame, keywords: string[]): void {
     const visible = tokens(keywords)
     if (!visible.length) return
-    const fontSize = 9 * scale
     if (appearance.keywordStyle === 'text') {
-      writeText(frame, visible.join('、'), fontSize, frame.muted, 'keyword')
+      writeText(frame, visible.join('、'), 9 * scale, frame.muted, 'keyword')
       return
     }
-    const lineGap = 4
+    const fontSize = 8.25
+    if (visible.some((token) => measure.widthOf(token, fontSize) + 10.5 > frame.width)) {
+      writeText(frame, visible.join('、'), 9 * scale, frame.muted, 'keyword')
+      return
+    }
+    const lineGap = 4.5
+    const initialX = frame.x
     let cursor = frame.x
     const rows: PdfMark[][] = [[]]
     let row = rows[0]
     for (const token of visible) {
       const textWidth = measure.widthOf(token, fontSize)
-      const width = textWidth + 8
-      const height = fontSize + 6
+      const width = textWidth + 10.5
+      const height = fontSize + 4
       if (cursor > frame.x && cursor + width > frame.x + frame.width) {
         cursor = frame.x
         row = []
@@ -378,16 +396,16 @@ export function layoutResumePdf(
     }
     for (const chips of rows) {
       const height = Math.max(...chips.map((chip) => chip.height))
-      const at = advance(frame, height + 3)
+      const at = advance(frame, height + 2)
       for (const chip of chips) {
-        content.push({ ...chip, page: at.page, y: at.y })
+        content.push({ ...chip, page: at.page, x: frame.x + chip.x - initialX, y: at.y })
         content.push({
           kind: 'text',
           role: 'keyword',
           page: at.page,
-          x: chip.x + 4,
-          y: at.y + 2,
-          width: chip.width - 8,
+          x: frame.x + chip.x - initialX + 5.25,
+          y: at.y + 1.5,
+          width: chip.width - 10.5,
           height: chip.height,
           color: frame.ink,
           text: chip.text,
@@ -402,12 +420,12 @@ export function layoutResumePdf(
   function writeEntry(frame: Frame, entry: EntryBlock): void {
     const visible = [entry.title, entry.date, entry.url, ...entry.lines, ...entry.bullets, ...entry.keywords].some((value) => value.trim())
     if (!visible) return
-    if (frame.y > frame.top) advance(frame, entryGap * 0.45)
+    if (frame.y > frame.top) advance(frame, entryGap * 0.65)
     if (entry.title || entry.date) writeDateTitle(frame, entry.title || '未命名', entry.date)
-    for (const line of entry.lines) writeText(frame, line, 10 * scale, frame.muted, 'body')
+    for (const line of entry.lines) writeText(frame, line, 10.25 * scale, frame.muted, 'body')
     if (entry.url.trim()) writeText(frame, entry.url, 9 * scale, frame.ink, 'body')
     for (const bullet of entry.bullets) {
-      if (bullet.trim()) writeText(frame, `- ${bullet.trim()}`, 9.5 * scale, frame.ink, 'body')
+      if (bullet.trim()) writeText(frame, `• ${bullet.trim()}`, 9.5 * scale, frame.ink, 'body')
     }
     writeKeywords(frame, entry.keywords)
   }
@@ -462,8 +480,8 @@ export function layoutResumePdf(
     const x = appearance.headerAlign === 'center' ? headerFrame.x + (headerFrame.width - photoWidth) / 2 : headerFrame.x
     content.push({ kind: 'image', role: 'photo', page: at.page, x, y: at.y, width: photoWidth, height: photoHeight, color: '', text: '', align: appearance.headerAlign, fontSize: 0, lineGap: 0 })
   }
-  writeText(headerFrame, document.basics.name.trim() || '未命名', 21 * scale, headerFrame.ink, 'name', appearance.headerAlign)
-  if (appearance.nameRule === 'short') writeRule(headerFrame, 36, sidebar ? paper : accent, 'name-rule', appearance.headerAlign)
+  writeText(headerFrame, document.basics.name.trim() || '未命名', 25 * scale, headerFrame.ink, 'name', appearance.headerAlign)
+  if (appearance.nameRule === 'short') writeRule(headerFrame, 24, sidebar ? '#ffffff' : accent, 'name-rule', appearance.headerAlign)
   writeText(headerFrame, document.basics.headline, 11 * scale, headerFrame.muted, 'body', appearance.headerAlign)
   writeText(headerFrame, joinParts([document.basics.phone, document.basics.email, document.basics.location], ' · '), 9 * scale, headerFrame.muted, 'body', appearance.headerAlign)
   const links = document.basics.links
@@ -471,109 +489,119 @@ export function layoutResumePdf(
     .map((link) => link.url.trim() ? (link.network.trim() || link.url.trim()) : (link.network.trim() || link.username.trim()))
   writeText(headerFrame, links.join(' · '), 9 * scale, headerFrame.muted, 'body', appearance.headerAlign)
 
-  for (const id of document.sectionOrder) {
-    const frame = columnFor(id)
-    if (id === 'intention') {
-      const parts = joinParts([document.intention.role, document.intention.industry, document.intention.cities, document.intention.workType], ' · ')
-      if (parts) writeText(frame, `求职意向：${parts}`, 9 * scale, frame.muted, 'body')
-    } else if (id === 'summary') {
-      if (document.summary.trim()) {
-        writeSection(frame, '职业摘要')
-        writeText(frame, document.summary, 10 * scale, frame.ink, 'body')
-      }
-    } else if (id === 'experience') writeEntries(frame, '工作与实习经历', experiences)
-    else if (id === 'projects') writeEntries(frame, '项目经历', projects)
-    else if (id === 'education') writeEntries(frame, '教育背景', education)
-    else if (id === 'skills') {
-      const groups = document.skills.filter((group) => joinParts([group.name, group.level, ...group.keywords], ''))
-      if (!groups.length) continue
-      writeSection(frame, '技能')
-      for (const group of groups) {
-        const label = joinParts([group.name, group.level], ' · ')
-        const words = tokens(group.keywords)
-        writeText(frame, `${label}${words.length ? `：${words.join('、')}` : ''}`, 10 * scale, frame.ink, 'body')
-      }
-    } else if (id === 'languages') {
-      const items = document.languages.filter((item) => joinParts([item.language, item.fluency], ''))
-      if (!items.length) continue
-      writeSection(frame, '语言')
-      for (const item of items) writeText(frame, joinParts([item.language, item.fluency], ' · '), 10 * scale, frame.ink, 'body')
-    } else if (id === 'certificates') writeEntries(frame, '证书', document.certificates.map((item) => ({
-      title: item.name,
-      date: showDate(item.date),
-      lines: [joinParts([item.issuer, item.expiryDate ? `有效期至 ${showDate(item.expiryDate)}` : '', item.credentialId], ' · ')].filter(Boolean),
-      bullets: [],
-      keywords: [],
-      url: item.url,
-    })))
-    else if (id === 'awards') writeEntries(frame, '荣誉', document.awards.map((item) => ({
-      title: item.title,
-      date: showDate(item.date),
-      lines: [joinParts([item.awarder, item.summary], ' · ')].filter(Boolean),
-      bullets: [],
-      keywords: [],
-      url: '',
-    })))
-    else if (id === 'activities') writeEntries(frame, '校园、社团与志愿', document.activities.map((item) => ({
-      title: joinParts([item.position, item.organization], ' · '),
-      date: period(item.startDate, item.endDate),
-      lines: [item.location].filter((line) => line.trim()),
-      bullets: item.highlights,
-      keywords: [],
-      url: '',
-    })))
-    else if (id === 'publications') writeEntries(frame, '发表与专利', document.publications.map((item) => ({
-      title: item.name,
-      date: showDate(item.date),
-      lines: [joinParts([item.type, item.publisher], ' · ')].filter(Boolean),
-      bullets: [],
-      keywords: [],
-      url: item.url,
-    })))
-    else if (id === 'interests') {
-      const items = document.interests.map((item) => item.trim()).filter(Boolean)
-      if (!items.length) continue
-      writeSection(frame, '兴趣')
-      writeText(frame, items.join('；'), 10 * scale, frame.ink, 'body')
-    } else if (id === 'references' && (document.referencesOnRequest || document.references.length)) {
-      const people = document.references.filter((item) => joinParts([item.name, item.relationship, item.organization, item.phone, item.email], ''))
-      if (!people.length && !document.referencesOnRequest) continue
-      writeSection(frame, '推荐人')
-      if (!people.length) writeText(frame, '如需要可提供', 10 * scale, frame.ink, 'body')
-      for (const item of people) writeEntry(frame, {
+  function writeOrderedSections(ids: string[]): void {
+    for (const id of ids) {
+      const frame = columnFor(id)
+      if (id === 'intention') {
+        const parts = joinParts([document.intention.role, document.intention.industry, document.intention.cities, document.intention.workType], ' · ')
+        if (parts) writeText(frame, `求职意向：${parts}`, 9 * scale, frame.muted, 'body')
+      } else if (id === 'summary') {
+        if (document.summary.trim()) {
+          writeSection(frame, '职业摘要')
+          writeText(frame, document.summary, 10 * scale, frame.ink, 'body')
+        }
+      } else if (id === 'experience') writeEntries(frame, '工作与实习经历', experiences)
+      else if (id === 'projects') writeEntries(frame, '项目经历', projects)
+      else if (id === 'education') writeEntries(frame, '教育背景', education)
+      else if (id === 'skills') {
+        const groups = document.skills.filter((group) => joinParts([group.name, group.level, ...group.keywords], ''))
+        if (!groups.length) continue
+        writeSection(frame, '技能')
+        for (const group of groups) {
+          const label = joinParts([group.name, group.level], ' · ')
+          const words = tokens(group.keywords)
+          writeText(frame, `${label}${words.length ? `：${words.join('、')}` : ''}`, 10 * scale, frame.ink, 'body')
+        }
+      } else if (id === 'languages') {
+        const items = document.languages.filter((item) => joinParts([item.language, item.fluency], ''))
+        if (!items.length) continue
+        writeSection(frame, '语言')
+        for (const item of items) writeText(frame, joinParts([item.language, item.fluency], ' · '), 10 * scale, frame.ink, 'body')
+      } else if (id === 'certificates') writeEntries(frame, '证书', document.certificates.map((item) => ({
         title: item.name,
-        date: '',
-        lines: [joinParts([item.relationship, item.organization, item.phone, item.email], ' · ')].filter(Boolean),
+        date: showDate(item.date),
+        lines: [joinParts([item.issuer, item.expiryDate ? `有效期至 ${showDate(item.expiryDate)}` : '', item.credentialId], ' · ')].filter(Boolean),
+        bullets: [],
+        keywords: [],
+        url: item.url,
+      })))
+      else if (id === 'awards') writeEntries(frame, '荣誉', document.awards.map((item) => ({
+        title: item.title,
+        date: showDate(item.date),
+        lines: [joinParts([item.awarder, item.summary], ' · ')].filter(Boolean),
         bullets: [],
         keywords: [],
         url: '',
-      })
-    } else {
-      const custom = document.customSections.find((item) => item.id === id)
-      const fields = custom?.fields.filter((field) => field.value.trim()) ?? []
-      if (!custom || !fields.length) continue
-      writeSection(frame, custom.title)
-      for (const field of fields) {
-        writeText(frame, `${field.label}：`, 10 * scale, frame.ink, 'body')
-        if (field.type === 'bullets') {
-          for (const line of field.value.split(/\r?\n/)) writeText(frame, `- ${line}`, 9.5 * scale, frame.ink, 'body')
-        } else {
-          writeText(frame, field.value, 10 * scale, frame.ink, 'body')
+      })))
+      else if (id === 'activities') writeEntries(frame, '校园、社团与志愿', document.activities.map((item) => ({
+        title: joinParts([item.position, item.organization], ' · '),
+        date: period(item.startDate, item.endDate),
+        lines: [item.location].filter((line) => line.trim()),
+        bullets: item.highlights,
+        keywords: [],
+        url: '',
+      })))
+      else if (id === 'publications') writeEntries(frame, '发表与专利', document.publications.map((item) => ({
+        title: item.name,
+        date: showDate(item.date),
+        lines: [joinParts([item.type, item.publisher], ' · ')].filter(Boolean),
+        bullets: [],
+        keywords: [],
+        url: item.url,
+      })))
+      else if (id === 'interests') {
+        const items = document.interests.map((item) => item.trim()).filter(Boolean)
+        if (!items.length) continue
+        writeSection(frame, '兴趣')
+        writeText(frame, items.join('；'), 10 * scale, frame.ink, 'body')
+      } else if (id === 'references' && (document.referencesOnRequest || document.references.length)) {
+        const people = document.references.filter((item) => joinParts([item.name, item.relationship, item.organization, item.phone, item.email], ''))
+        if (!people.length && !document.referencesOnRequest) continue
+        writeSection(frame, '推荐人')
+        if (!people.length) writeText(frame, '如需要可提供', 10 * scale, frame.ink, 'body')
+        for (const item of people) writeEntry(frame, {
+          title: item.name,
+          date: '',
+          lines: [joinParts([item.relationship, item.organization, item.phone, item.email], ' · ')].filter(Boolean),
+          bullets: [],
+          keywords: [],
+          url: '',
+        })
+      } else {
+        const custom = document.customSections.find((item) => item.id === id)
+        const fields = custom?.fields.filter((field) => field.value.trim()) ?? []
+        if (!custom || !fields.length) continue
+        writeSection(frame, custom.title)
+        for (const field of fields) {
+          writeText(frame, `${field.label}：`, 10 * scale, frame.ink, 'body')
+          if (field.type === 'bullets') {
+            for (const line of field.value.split(/\r?\n/)) writeText(frame, `- ${line}`, 9.5 * scale, frame.ink, 'body')
+          } else {
+            writeText(frame, field.value, 10 * scale, frame.ink, 'body')
+          }
         }
       }
     }
   }
+
+  if (sidebar) {
+    const sideIds = document.sectionOrder.filter((id) => columnFor(id) === side)
+    const mainIds = document.sectionOrder.filter((id) => columnFor(id) === main)
+    writeOrderedSections(sideIds)
+    lastSidePage = side.page
+    writeOrderedSections(mainIds)
+  } else writeOrderedSections(document.sectionOrder)
 
   const backgrounds: PdfMark[] = []
   for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
     if (paper.toLowerCase() !== '#ffffff') {
       backgrounds.push({ kind: 'fill', role: 'paper', page: pageNumber, x: 0, y: 0, width: page.width, height: page.height, color: paper, text: '', align: 'left', fontSize: 0, lineGap: 0 })
     }
-    if (sidebar) {
+    if (sidebar && pageNumber <= lastSidePage) {
       backgrounds.push({ kind: 'fill', role: 'sidebar', page: pageNumber, x: 0, y: 0, width: sidebarWidth, height: page.height, color: accent, text: '', align: 'left', fontSize: 0, lineGap: 0 })
     }
     if (appearance.layout === 'educationFirst' && pageNumber === 1) {
-      backgrounds.push({ kind: 'fill', role: 'graduate-bar', page: pageNumber, x: 0, y: 0, width: page.width, height: 8, color: accent, text: '', align: 'left', fontSize: 0, lineGap: 0 })
+      backgrounds.push({ kind: 'fill', role: 'graduate-bar', page: pageNumber, x: 0, y: 0, width: page.width, height: 3, color: accent, text: '', align: 'left', fontSize: 0, lineGap: 0 })
     }
   }
 
@@ -589,19 +617,23 @@ function paint(doc: Pdf, layout: PdfLayout, photo: string | undefined): void {
       if (mark.kind === 'fill') {
         doc.save().fillColor(mark.color).rect(mark.x, mark.y, mark.width, mark.height).fill().restore()
       } else if (mark.kind === 'chip') {
-        doc.save().fillColor(mark.color).roundedRect(mark.x, mark.y, mark.width, mark.height, mark.height / 2).fill().restore()
+        doc.save().fillColor(mark.color).roundedRect(mark.x, mark.y, mark.width, mark.height, Math.min(2.25, mark.height / 2)).fill().restore()
       } else if (mark.kind === 'rule') {
         doc.save().strokeColor(mark.color).lineWidth(mark.height).moveTo(mark.x, mark.y + mark.height / 2).lineTo(mark.x + mark.width, mark.y + mark.height / 2).stroke().restore()
       } else if (mark.kind === 'image' && photo) {
         doc.image(photo, mark.x, mark.y, { width: mark.width, height: mark.height })
       } else if (mark.kind === 'text') {
-        doc.fillColor(mark.color).fontSize(mark.fontSize).text(mark.text, mark.x, mark.y, {
+        const weight = mark.role === 'name' ? 0.42 : mark.role === 'section' || mark.role === 'title' ? 0.22 : 0
+        doc.save().fillColor(mark.color).strokeColor(mark.color).lineWidth(weight).fontSize(mark.fontSize).text(mark.text, mark.x, mark.y, {
           width: mark.width,
           height: mark.height + 2,
           align: mark.align,
           lineGap: mark.lineGap,
           lineBreak: true,
+          fill: true,
+          stroke: weight > 0,
         })
+        doc.restore()
       }
     }
   }

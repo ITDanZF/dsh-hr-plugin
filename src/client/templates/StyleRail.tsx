@@ -1,17 +1,46 @@
 import { Switch } from 'antd'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { sectionLabels, setSectionPlacement, type ResumeCatalog } from '../../domain/index.js'
+import { appearanceFromPreset, sectionLabels, setSectionPlacement, type ResumeCatalog } from '../../domain/index.js'
 import type {
   DatePlace, HeaderAlign, HeadingRule, KeywordStyle, NameRule, ResumeAppearance,
   ResumeDraft, SheetDensity, SheetFont, SheetLayout, SheetScale,
 } from '../draft.js'
 import { applyPreset, customizeAppearance } from './appearance.js'
+import { createSampleDraft } from '../draft.js'
+import { renderTemplate } from './registry.js'
 
 type Group = 'presets' | 'layout' | 'colors' | 'type' | 'details'
 const groups: { id: Group; label: string }[] = [
   { id: 'presets', label: '预设' }, { id: 'layout', label: '版式' },
   { id: 'colors', label: '配色' }, { id: 'type', label: '排版' }, { id: 'details', label: '细节' },
 ]
+
+const presetFamilies = [
+  { title: '网申单栏', ids: ['ats-simple', 'mono-ink', 'compact-page'], use: '在线申请 · 清晰易读' },
+  { title: '现代专业', ids: ['graduate', 'product-blue', 'business-gray', 'tech-mono'], use: '产品 · 技术 · 商务' },
+  { title: '经典衬线', ids: ['classic-serif', 'academic'], use: '传统行业 · 研究岗位' },
+  { title: '编辑排版', ids: ['magazine', 'warm-paper'], use: '内容 · 品牌 · 策略' },
+  { title: '侧栏作品集', ids: ['sidebar-dark', 'portfolio'], use: '直接分享 · 面试展示' },
+]
+
+const thumbnailSource = (() => {
+  const sample = createSampleDraft()
+  sample.sectionOrder = ['summary', 'experience', 'projects', 'skills']
+  sample.experiences[0]!.highlights = sample.experiences[0]!.highlights.slice(0, 1)
+  sample.projects[0]!.highlights = []
+  return sample
+})()
+
+function contrastRatio(first: string, second: string): number {
+  const luminance = (hex: string): number => {
+    const channel = [1, 3, 5].map((index) => Number.parseInt(hex.slice(index, index + 2), 16) / 255)
+      .map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+    return channel[0]! * 0.2126 + channel[1]! * 0.7152 + channel[2]! * 0.0722
+  }
+  if (!/^#[0-9a-f]{6}$/i.test(first) || !/^#[0-9a-f]{6}$/i.test(second)) return 0
+  const values = [luminance(first), luminance(second)]
+  return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05)
+}
 
 export function StyleRail({ draft, catalog, onChange, autoSave, hidden, onCollapse }: {
   draft: ResumeDraft
@@ -30,6 +59,14 @@ export function StyleRail({ draft, catalog, onChange, autoSave, hidden, onCollap
     onChange(customizeAppearance(draft, patch))
   }
   const chosen = catalog.presets.find((item) => item.presetId === look.presetId)
+  const groupedIds = new Set(presetFamilies.flatMap((family) => family.ids))
+  const otherIds = catalog.presets.filter((preset) => !groupedIds.has(preset.presetId)).map((preset) => preset.presetId)
+  const displayedFamilies = otherIds.length ? [...presetFamilies, { title: '其他样式', ids: otherIds, use: '更多预设' }] : presetFamilies
+  const contrastWarnings = [
+    contrastRatio(look.ink, look.paper) < 4.5 ? '正文和纸色对比不足' : '',
+    contrastRatio(look.accent, look.paper) < 4.5 ? '标题和纸色对比不足' : '',
+    look.layout === 'sidebar' && contrastRatio('#ffffff', look.accent) < 4.5 ? '侧栏白字对比不足' : '',
+  ].filter(Boolean)
 
   return (
     <aside className="template-rail" aria-label="模板设置" hidden={hidden}>
@@ -52,12 +89,15 @@ export function StyleRail({ draft, catalog, onChange, autoSave, hidden, onCollap
       <div id="template-controls" className="template-controls" role="tabpanel" aria-labelledby={`template-tab-${group}`} ref={controlsRef}>
         {group === 'presets' ? <>
           <p className="template-help">选择预设会替换当前纸面样式，简历内容和模块顺序会保留。</p>
-          <div className="preset-grid">
-            {catalog.presets.map((preset) => <button key={preset.presetId} type="button" className={look.presetId === preset.presetId ? 'preset-card is-selected' : 'preset-card'} aria-pressed={look.presetId === preset.presetId} onClick={() => onChange(applyPreset(draft, preset.presetId))}>
-              <span className="preset-page" style={{ background: preset.paper, color: preset.accent }}><i /><i /><i /></span>
-              <span>{preset.name}</span>
-            </button>)}
-          </div>
+          {displayedFamilies.map((family) => <div className="preset-family" key={family.title}>
+            <div className="preset-family-head"><strong>{family.title}</strong><span>{family.use}</span></div>
+            <div className="preset-grid">
+              {family.ids.map((id) => catalog.presets.find((preset) => preset.presetId === id)).filter((preset) => preset !== undefined).map((preset) => <button key={preset.presetId} type="button" className={look.presetId === preset.presetId ? 'preset-card is-selected' : 'preset-card'} aria-pressed={look.presetId === preset.presetId} onClick={() => onChange(applyPreset(draft, preset.presetId))}>
+                <span className="preset-thumbnail" aria-hidden="true"><span className="preset-thumbnail-sheet">{renderTemplate({ ...thumbnailSource, appearance: appearanceFromPreset(preset) })}</span></span>
+                <span className="preset-card-copy"><strong>{preset.name}</strong><small>{preset.layout === 'sidebar' ? '双栏 · 彩色侧栏' : preset.font === 'serif' ? '单栏 · 衬线字体' : preset.density === 'compact' ? '单栏 · 紧凑排版' : '单栏 · 清晰排版'}</small></span>
+              </button>)}
+            </div>
+          </div>)}
         </> : null}
         {group === 'layout' ? <>
           <Field label="页面结构"><div className="layout-pick">{catalog.layout.map((choice) => <button key={choice.id} type="button" className={look.layout === choice.value ? 'is-selected' : undefined} aria-pressed={look.layout === choice.value} onClick={() => set({ layout: choice.value as SheetLayout })}><span className={`layout-glyph layout-${choice.value}`} />{choice.label}</button>)}</div></Field>
@@ -72,6 +112,7 @@ export function StyleRail({ draft, catalog, onChange, autoSave, hidden, onCollap
           <Field label="纸色"><Colors value={look.paper} options={catalog.paper} onChange={(paper) => set({ paper })} /></Field>
           <Field label="文字颜色"><Colors value={look.ink} options={catalog.ink} onChange={(ink) => set({ ink })} /></Field>
           <Field label="强调色"><Colors value={look.accent} options={catalog.accent} onChange={(accent) => set({ accent })} /></Field>
+          {contrastWarnings.length ? <p className="rail-contrast-warning" role="status">{contrastWarnings.join('；')}。建议调整到至少 4.5:1。</p> : null}
         </> : null}
         {group === 'type' ? <>
           <Field label="字体"><Choices value={look.font} options={catalog.font} onChange={(font) => set({ font: font as SheetFont })} /></Field>
