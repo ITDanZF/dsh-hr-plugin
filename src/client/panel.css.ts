@@ -57,7 +57,7 @@ export const panelCss = `
   cursor: pointer;
 }
 .export-button:disabled { cursor: not-allowed; opacity: 0.5; }
-.print-source { display: none; }
+.print-source { position: absolute; left: -10000px; top: 0; width: 210mm; visibility: hidden; }
 .hr-brand { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hr-brand strong { font-size: 15px; font-weight: 650; }
 .hr-brand span, .hint, .item-index { color: var(--dsw-alias-label-tertiary, #78716c); font-size: 12px; }
@@ -515,18 +515,24 @@ export const panelCss = `
   background: var(--dsw-alias-bg-base, #f7f7f8);
 }
 .preview-page { width: 794px; margin: 0 auto; transition: zoom 160ms ease; }
+.paged-resume { position: relative; width: 210mm; }
+.pagination-source { position: absolute; left: -10000px; top: 0; width: 210mm; visibility: hidden; pointer-events: none; }
+.pagination-source .sheet { width: 210mm; max-width: none; margin: 0; }
+.paginated-pages { display: flex; flex-direction: column; gap: 24px; }
+.paginated-pages .paged-sheet { width: 210mm; max-width: none; height: 297mm; min-height: 0; margin: 0; overflow: hidden; }
+.paginated-pages .paged-sheet.sheet-sidebar .sheet-side,
+.paginated-pages .paged-sheet.sheet-sidebar .sheet-main { min-height: 0; }
+.paginated-pages .paged-sheet.sheet-sidebar.side-empty { grid-template-columns: 1fr; }
+.paginated-pages .paged-sheet.sheet-sidebar.side-empty .sheet-side { display: none; }
 .template-split .sheet { margin: 0; width: 210mm; max-width: none; }
 @media print {
-  body.hr-printing * { visibility: hidden !important; }
-  body.hr-printing .print-source,
-  body.hr-printing .print-source * { visibility: visible !important; }
+  @page { size: A4; margin: 0; }
+  body.hr-printing > *:not(.print-source) { display: none !important; }
   body.hr-printing .print-source {
     display: block !important;
-    position: absolute;
-    left: 0;
-    top: 0;
+    position: static;
     width: 210mm;
-    background: white;
+    visibility: visible;
   }
   body.hr-printing .print-source .sheet {
     width: 210mm;
@@ -535,5 +541,9 @@ export const panelCss = `
     margin: 0;
     box-shadow: none;
   }
+  body.hr-printing .print-source .pagination-source { display: none; }
+  body.hr-printing .print-source .paginated-pages { display: block; }
+  body.hr-printing .print-source .paged-sheet { break-after: page; page-break-after: always; }
+  body.hr-printing .print-source .paged-sheet:last-child { break-after: auto; page-break-after: auto; }
 }
 `

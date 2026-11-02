@@ -34,8 +34,7 @@
     "dist",
     "cordis.patch.yml",
     "skills",
-    "src/tools/guide/manual.md",
-    "assets"
+    "src/tools/guide/manual.md"
   ],
   "scripts": {
     "prepublishOnly": "pnpm run build",
@@ -45,11 +44,12 @@
     "check:preview": "pnpm run build && node scripts/check-preview.mjs",
     "check:merge": "pnpm run build && node scripts/check-merge.mjs",
     "check:manifest": "node scripts/check-manifest.mjs",
-    "check:pdf": "pnpm run build && node scripts/check-pdf.mjs"
+    "check:pdf": "pnpm run build && node scripts/check-pdf.mjs",
+    "check:store": "pnpm run build && node scripts/check-store.mjs"
   },
   "engines": {
     "node": ">=22.19",
-    "dsh": ">=0.2.1-rc.5 <0.3.0"
+    "dsh": "*"
   },
   "packageManager": "pnpm@11.7.0",
   "dsh": {
@@ -66,14 +66,11 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-resources": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-client-ui-sidebar-right": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-skill": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.5",
-    "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-resources": "*",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "*",
+    "@deepseek-ai/dsh-client-ui-slots": "*",
+    "@deepseek-ai/dsh-skill": "*",
+    "@deepseek-ai/dsh-tools": "*",
     "react": "^19.0.0"
   },
   "devDependencies": {
@@ -81,10 +78,7 @@
     "@deepseek-ai/dsh-client-resources": "0.2.1-rc.2",
     "@deepseek-ai/dsh-client-ui-sidebar-right": "0.2.1-rc.2",
     "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2",
     "@deepseek-ai/dsh-skill": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
     "@types/node": "^22.19.0",
     "@types/pdfkit": "0.17.7",
@@ -99,9 +93,10 @@
     "zod": "4.6.7"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-storage-sqlite": "0.2.1-rc.5",
+    "@betteroffice/fonts-cjk": "0.4.2",
     "antd": "^5.29.3",
     "dayjs": "^1.11.23",
+    "fontkit": "2.0.4",
     "pdfkit": "0.17.2",
     "zod": "4.6.7"
   }

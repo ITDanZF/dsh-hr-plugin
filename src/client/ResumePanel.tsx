@@ -1,5 +1,6 @@
 import { Segmented } from 'antd'
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { createEmptyResume, defaultCatalog, type ResumeCatalog } from '../domain/index.js'
 import { createSampleDraft, type ResumeDraft } from './draft.js'
 import { clearMatchingPendingDrafts, clearPendingDraft, discardOtherPendingDraft, readOtherPendingDraft, readPendingDraft, writePendingDraft, type PendingDraft } from './draft-recovery.js'
@@ -10,7 +11,7 @@ import { HarnessTheme } from './HarnessTheme.js'
 import { panelCss } from './panel.css.js'
 import { StyleRail } from './templates/StyleRail.js'
 import { TemplatePreview } from './templates/TemplatePreview.js'
-import { renderTemplate } from './templates/registry.js'
+import { PagedResume } from './templates/PagedResume.js'
 
 const STYLE_ID = 'dsh-hr-panel-style'
 const SAVE_DELAY_MS = 400
@@ -314,7 +315,7 @@ function SessionPanel({ sessionId, panelRef }: { sessionId?: string; panelRef: R
             暂时无法读取简历，正在自动重连。
           </div>
         ) : null}
-        <div className="print-source" aria-hidden="true">{renderTemplate(draft)}</div>
+        {createPortal(<div className="print-source" aria-hidden="true"><PagedResume draft={draft} /></div>, document.body)}
         <div className="hr-body">
           {!ready ? <div className="hr-loading">正在读取简历，请稍候。</div> : (
             <>

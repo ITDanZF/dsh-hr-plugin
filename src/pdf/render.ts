@@ -2,6 +2,9 @@ import { createWriteStream, existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, rmdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { CJK_FONT_ASSET_URLS } from '@betteroffice/fonts-cjk'
+import * as fontkit from 'fontkit'
 import PDFDocument from 'pdfkit/js/pdfkit.standalone.js'
 import type { ResumeDocument, SheetFont } from '../domain/index.js'
 
@@ -39,16 +42,23 @@ export interface PdfLayout {
 const MM = 72 / 25.4
 const SIDEBAR_MM = 68
 const SIDE_SECTIONS = new Set(['skills', 'languages', 'interests'])
+const sansCjk = fileURLToPath(CJK_FONT_ASSET_URLS['NotoSansSC-Regular.otf']())
+const serifCjk = fileURLToPath(CJK_FONT_ASSET_URLS['NotoSerifSC-Regular.otf']())
+const bundledFonts = {
+  serif: [serifCjk, sansCjk],
+  sans: [sansCjk, serifCjk],
+  mono: [sansCjk, serifCjk],
+} satisfies Record<SheetFont, string[]>
 
 const fontCandidates: Record<SheetFont, Record<'darwin' | 'win32' | 'linux', string[]>> = {
   serif: {
     darwin: ['/System/Library/Fonts/Supplemental/Songti.ttc', '/Library/Fonts/Songti.ttc'],
-    win32: ['C:/Windows/Fonts/simsun.ttc', 'C:/Windows/Fonts/simsunb.ttf', 'C:/Windows/Fonts/simfang.ttf'],
+    win32: ['C:/Windows/Fonts/simfang.ttf', 'C:/Windows/Fonts/simsun.ttc', 'C:/Windows/Fonts/simsunb.ttf'],
     linux: ['/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc', '/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttf', '/usr/share/fonts/truetype/arphic/ukai.ttf'],
   },
   sans: {
     darwin: ['/System/Library/Fonts/Hiragino Sans GB.ttc', '/System/Library/Fonts/STHeiti Light.ttc'],
-    win32: ['C:/Windows/Fonts/msyh.ttc', 'C:/Windows/Fonts/msyh.ttf', 'C:/Windows/Fonts/simhei.ttf'],
+    win32: ['C:/Windows/Fonts/simhei.ttf', 'C:/Windows/Fonts/msyh.ttc', 'C:/Windows/Fonts/msyh.ttf'],
     linux: ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttf'],
   },
   mono: {
@@ -72,7 +82,7 @@ function genericFonts(): string[] {
 }
 
 export function pdfFontCandidates(family: SheetFont): string[] {
-  return [...fontCandidates[family][platformKey()], ...genericFonts()]
+  return [...bundledFonts[family], ...fontCandidates[family][platformKey()], ...genericFonts()]
 }
 
 export function resolvePdfFont(family: SheetFont, exists: (file: string) => boolean = existsSync): string {
@@ -86,7 +96,28 @@ export function resolvePdfFont(family: SheetFont, exists: (file: string) => bool
   return found
 }
 
-function fontEmbeds(bytes: Buffer): boolean {
+function requiredGlyphs(document: ResumeDocument): string {
+  const values = ['中文简历姓名工作与实习经历项目教育背景技能语言兴趣发表与专利荣誉校园社团与志愿求职意向至今']
+  function collect(value: unknown): void {
+    if (typeof value === 'string') values.push(value)
+    else if (Array.isArray(value)) value.forEach(collect)
+    else if (value && typeof value === 'object') {
+      for (const [key, part] of Object.entries(value)) if (key !== 'photo') collect(part)
+    }
+  }
+  collect(document)
+  return [...new Set([...values.join('')])].filter((character) => !/\s/.test(character)).join('')
+}
+
+function fontHasGlyphs(bytes: Buffer, glyphs: string): boolean {
+  try {
+    const parsed = fontkit.create(bytes)
+    return Boolean(parsed && [...new Set([...glyphs])].every((character) => /\s/.test(character) || parsed.hasGlyphForCodePoint(character.codePointAt(0)!)))
+  } catch { return false }
+}
+
+function fontEmbeds(bytes: Buffer, glyphs: string): boolean {
+  if (!fontHasGlyphs(bytes, glyphs)) return false
   const doc = new PDFDocument({ autoFirstPage: false })
   doc.on('data', () => {})
   try {
@@ -103,26 +134,28 @@ function fontEmbeds(bytes: Buffer): boolean {
 
 const embeddedFonts = new Map<string, Buffer>()
 
-async function loadPdfFont(family: SheetFont): Promise<Buffer> {
+async function loadPdfFont(document: ResumeDocument): Promise<Buffer> {
+  const family = document.appearance.font
+  const glyphs = requiredGlyphs(document)
   const configured = process.env.DSH_HR_PDF_FONT
   const cacheKey = `${configured ?? ''}:${family}`
   const cached = embeddedFonts.get(cacheKey)
-  if (cached) return cached
+  if (cached && fontEmbeds(cached, glyphs)) return cached
   if (configured) {
     if (!existsSync(configured)) throw new Error(`PDF font not found: ${configured}`)
     const bytes = await readFile(configured)
-    if (!fontEmbeds(bytes)) throw new Error(`PDF font not found: ${configured}`)
+    if (!fontEmbeds(bytes, glyphs)) throw new Error(`PDF font cannot render the resume text: ${configured}`)
     embeddedFonts.set(cacheKey, bytes)
     return bytes
   }
   for (const candidate of pdfFontCandidates(family)) {
     if (/\.(ttc|otc)$/i.test(candidate) || !existsSync(candidate)) continue
     const bytes = await readFile(candidate)
-    if (!fontEmbeds(bytes)) continue
+    if (!fontEmbeds(bytes, glyphs)) continue
     embeddedFonts.set(cacheKey, bytes)
     return bytes
   }
-  throw new Error('No Unicode PDF font found. Set DSH_HR_PDF_FONT to a Chinese-capable .ttf or .otf file.')
+  throw new Error('No PDF font can render all resume characters. Set DSH_HR_PDF_FONT to a suitable .ttf or .otf file.')
 }
 
 function readPhoto(document: ResumeDocument): Buffer | undefined {
@@ -234,8 +267,42 @@ export function layoutResumePdf(
     if (!text) return
     const lineGap = lineGapFor(fontSize)
     const height = measure.heightOf(text, fontSize, frame.width, lineGap)
-    const at = advance(frame, height)
-    content.push({ kind: 'text', role, page: at.page, x: frame.x, y: at.y, width: frame.width, height, color, text, align, fontSize, lineGap })
+    if (height <= frame.bottom - frame.y) {
+      const at = advance(frame, height)
+      content.push({ kind: 'text', role, page: at.page, x: frame.x, y: at.y, width: frame.width, height, color, text, align, fontSize, lineGap })
+      return
+    }
+    let remaining = [...text]
+    while (remaining.length) {
+      if (frame.bottom - frame.y < fontSize + lineGap) {
+        frame.page += 1
+        frame.y = frame.top
+        pageCount = Math.max(pageCount, frame.page)
+      }
+      const available = frame.bottom - frame.y
+      let low = 1
+      let high = remaining.length
+      let count = 0
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2)
+        const candidate = remaining.slice(0, middle).join('')
+        if (measure.heightOf(candidate, fontSize, frame.width, lineGap) <= available) {
+          count = middle
+          low = middle + 1
+        } else high = middle - 1
+      }
+      if (!count) {
+        frame.page += 1
+        frame.y = frame.top
+        pageCount = Math.max(pageCount, frame.page)
+        continue
+      }
+      const chunk = remaining.slice(0, count).join('')
+      const chunkHeight = measure.heightOf(chunk, fontSize, frame.width, lineGap)
+      content.push({ kind: 'text', role, page: frame.page, x: frame.x, y: frame.y, width: frame.width, height: chunkHeight, color, text: chunk, align, fontSize, lineGap })
+      frame.y += chunkHeight
+      remaining = remaining.slice(count)
+    }
   }
 
   function writeRule(frame: Frame, width: number, color: string, role: string, align: Align): void {
@@ -543,7 +610,7 @@ function paint(doc: Pdf, layout: PdfLayout, photo: string | undefined): void {
 export async function renderResumePdf(document: ResumeDocument, outputPath: string): Promise<string> {
   const photoUrl = document.appearance.showPhoto && document.basics.photo ? document.basics.photo : undefined
   readPhoto(document)
-  const font = await loadPdfFont(document.appearance.font)
+  const font = await loadPdfFont(document)
   const doc = new PDFDocument({
     size: 'A4',
     margins: { top: 0, right: 0, bottom: 0, left: 0 },
@@ -571,6 +638,8 @@ export async function renderResumePdf(document: ResumeDocument, outputPath: stri
       },
     }
     const layout = layoutResumePdf(document, measure, { width: doc.page.width, height: doc.page.height })
+    const printedText = layout.marks.filter((mark) => mark.kind === 'text' || mark.kind === 'chip').map((mark) => mark.text).join('')
+    if (!fontHasGlyphs(font, printedText)) throw new Error('PDF font cannot render all printed characters.')
     doc.font(font)
     paint(doc, layout, photoUrl)
     doc.end()

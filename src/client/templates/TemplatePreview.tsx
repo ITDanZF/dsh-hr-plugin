@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ResumeDraft } from '../draft.js'
-import { renderTemplate } from './registry.js'
+import { PagedResume } from './PagedResume.js'
 
 type Zoom = 'fit' | 0.75 | 1
 const SHEET_WIDTH = 794 // A4 at the browser's 96 CSS pixels per inch.
@@ -13,6 +13,7 @@ export function TemplatePreview({ draft, settingsOpen, onToggleSettings }: {
   const stageRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [zoom, setZoom] = useState<Zoom>('fit')
+  const [pageCount, setPageCount] = useState(1)
   useEffect(() => {
     const stage = stageRef.current
     if (!stage) return
@@ -27,14 +28,14 @@ export function TemplatePreview({ draft, settingsOpen, onToggleSettings }: {
     <div className="template-preview-bar">
       <div className="preview-bar-start">
         <button className="preview-settings-toggle" type="button" aria-expanded={settingsOpen} onClick={onToggleSettings}>{settingsOpen ? '专注预览' : '展开设置'}</button>
-        <span>A4 实时预览</span>
+        <span>A4 实时预览 · {pageCount} 页</span>
       </div>
       <div className="preview-zoom" aria-label="预览缩放">
         {([['fit', '适合宽度'], [0.75, '75%'], [1, '100%']] as const).map(([value, label]) => <button key={String(value)} type="button" aria-pressed={zoom === value} onClick={() => setZoom(value)}>{label}</button>)}
       </div>
     </div>
     <div className="stage" ref={stageRef}>
-      <div className="preview-page" style={{ zoom: scale }}>{renderTemplate(draft)}</div>
+      <div className="preview-page" style={{ zoom: scale }}><PagedResume draft={draft} onPagesChange={setPageCount} /></div>
     </div>
   </div>
 }

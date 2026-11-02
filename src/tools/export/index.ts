@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+import { resumeStoragePath } from '../../host/paths.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createEmptyResume } from '../../domain/index.js'
 import { renderResumePdf } from '../../pdf/render.js'
@@ -26,7 +26,7 @@ export function registerResumeExportPdfTool(ctx: Context, store: ResumeStore): v
       try {
         const sessionId = requireSessionId(exec)
         const document = (await store.get(sessionId)) ?? createEmptyResume()
-        const outDir = dshHomePath('storages', 'hr-resume', 'exports')
+        const outDir = resumeStoragePath('hr-resume', 'exports')
         await mkdir(outDir, { recursive: true })
         const safe = String(sessionId).replaceAll(/[^a-zA-Z0-9._-]/g, '_')
         const outputPath = path.join(outDir, `${safe}.pdf`)

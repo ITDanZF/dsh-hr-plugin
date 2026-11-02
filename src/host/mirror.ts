@@ -1,13 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+import { resumeStoragePath } from './paths.js'
 import { createEmptyResume, parseResume, type ResumeCatalog, type ResumeDocument } from '../domain/index.js'
 import { resumeRevision } from '../store/revision.js'
 import type { ResumeStore } from '../store/types.js'
 
 /** Directory of session-scoped JSON mirrors for the right-hand preview. */
 export function resumeMirrorRoot(): string {
-  return dshHomePath('storages', 'hr-resume')
+  return resumeStoragePath('hr-resume')
 }
 
 export function resumeMirrorPath(sessionId: string): string {

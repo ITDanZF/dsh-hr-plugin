@@ -8,7 +8,7 @@ dsh plugin --profile web add dsh-hr-plugin
 
 包页面：https://www.npmjs.com/package/dsh-hr-plugin
 
-装完后重启这个 profile。需要本机已安装 `dsh` 0.2.1-rc.5 到 0.3.0 之前的版本。
+装完后重启这个 profile。插件不再固定要求某个 `dsh` 版本，也不安装 Harness 的 SQLite 存储插件；升级 Harness 后仍需确认其工具、技能和右侧栏扩展接口兼容。
 
 ## 界面
 
@@ -52,17 +52,19 @@ dsh plugin --profile web add dsh-hr-plugin
 - 模块顺序会用于页面预览、打印和 PDF。基本信息固定在页眉。
 - 十二套预设，以及单栏、教育优先、侧栏三种版式。侧栏版式可以把模块放进正文或侧栏。
 - 自定义模块可以是短文本、长文本、日期区间、链接或要点列表。
-- 下载 PDF 按当前模板排版，包含侧栏、页顶色条、页眉、日期和关键词，并支持中文和自动换页。已启用照片时，PDF 会放入 PNG 或 JPEG。「打印当前样式」走浏览器打印，版式更接近屏幕。
+- A4 实时预览会在内容超出一页时显示第二页及后续页面；打印使用相同的分页结果。下载 PDF 按当前模板排版，包含侧栏、页顶色条、页眉、日期和关键词，并支持中文、长段落和自动换页。已启用照片时，PDF 会放入 PNG 或 JPEG。
 
 ## 使用前注意
 
 - 安装或更新之后要重启对应的 profile，右侧才会出现「简历」。
-- 导出中文 PDF 时，系统里要有支持中文的 TTF 或 OTF 字体。找不到时，用 `DSH_HR_PDF_FONT` 指定字体文件路径。
+- 插件通过运行依赖 `@betteroffice/fonts-cjk` 安装 Noto Sans/Serif SC 字体，导出 PDF 不依赖系统安装的中文字体；导出前会检查简历文字的字形，缺字时会报错，不生成方框乱码。需要使用其他字体时，可用 `DSH_HR_PDF_FONT` 指定 TTF 或 OTF 文件。字体遵循 SIL Open Font License 1.1，许可证由字体包提供。
+- 简历和选项目录由插件保存在 `DSH_HOME/storages/hr-resume`（未设置 `DSH_HOME` 时为 `~/.dsh/storages/hr-resume`）。首次启动会把旧的 `hr-plugin.sqlite` 内容迁移到该目录；原数据库不会删除。
 
 <details>
 <summary>本地开发</summary>
 
 本机调试使用已安装的 `dsh`，不在 `deepseek-harness` 源码目录里安装依赖。日常使用单独的 `hr-dev` profile，不改默认 `web` profile。
+开发依赖用于编译，运行时使用当前 Harness 提供的扩展接口；已在 `dsh` 0.2.1-rc.5 上验证。未来如果这些接口发生破坏性变化，需要适配插件，不能仅靠版本范围保证兼容。
 
 全局需要 pnpm 11.7.0。`dsh plugin` 会把参数转发给它。
 
@@ -95,6 +97,8 @@ dsh plugin --profile hr-dev add .
 1. `pnpm run build`
 2. `dsh --profile hr-dev --dump-config`。输出里要有 `# == dsh-hr-plugin` 层，以及 `id: hr-plugin`。没有这一层时不要先看业务代码。
 3. `dsh --profile hr-dev`。启动日志里要有 `[dsh-hr-plugin] loaded` 和 `resume preview http://127.0.0.1:3091`。
+
+回归检查可运行 `pnpm run check:store`、`pnpm run check:pdf` 和 `pnpm run check:manifest`。分别覆盖旧数据迁移、长内容 PDF 分页和安装清单。
 
 改插件代码必须重新编译再重启。这个加载回路不会热更新。`pnpm run dev:panel` 只预览面板，地址是 `http://127.0.0.1:5174/`，没有会话时使用示例草稿。
 

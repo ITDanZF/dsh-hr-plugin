@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { inflateSync } from 'node:zlib'
+import * as fontkit from 'fontkit'
 import { applyPreset, createEmptyResume } from '../dist/domain/index.js'
 import { layoutResumePdf, pdfFontCandidates, renderResumePdfBuffer, resolvePdfFont } from '../dist/pdf/render.js'
 
@@ -127,11 +128,27 @@ const longLayout = layout(long)
 assert.ok(longLayout.pageCount >= 2)
 assert.ok(longLayout.marks.some((mark) => mark.role === 'sidebar' && mark.page === 2))
 
+const longParagraph = resume('classic-serif')
+const repeated = '一段很长的项目说明。'.repeat(1000)
+longParagraph.summary = repeated
+const paragraphLayout = layout(longParagraph)
+assert.ok(paragraphLayout.pageCount >= 2)
+const summaryMarks = paragraphLayout.marks.filter((mark) => mark.role === 'body' && mark.text.includes('一段很长的项目说明'))
+assert.equal(summaryMarks.map((mark) => mark.text).join(''), repeated)
+assert.ok(summaryMarks.every((mark) => mark.y + mark.height <= paragraphLayout.pageHeight - longParagraph.appearance.pageMarginMm * MM + 1))
+
 const serif = pdfFontCandidates('serif')
 const sans = pdfFontCandidates('sans')
 const mono = pdfFontCandidates('mono')
 assert.notEqual(serif[0], sans[0])
-assert.notEqual(sans[0], mono[0])
+assert.equal(sans[0], mono[0], 'monospace PDF uses the bundled CJK sans fallback')
+for (const candidate of [serif[0], sans[0]]) {
+  assert.ok(existsSync(candidate), `bundled PDF font missing: ${candidate}`)
+  const font = fontkit.openSync(candidate)
+  for (const character of '中文简历DeepSeek 123') {
+    assert.ok(font.hasGlyphForCodePoint(character.codePointAt(0)), `${candidate} cannot render ${character}`)
+  }
+}
 const present = new Set([serif[0], sans[0]])
 const exists = (file) => present.has(file)
 assert.notEqual(resolvePdfFont('serif', exists), resolvePdfFont('sans', exists))
@@ -141,6 +158,14 @@ assert.ok(existsSync(resolvePdfFont('mono')))
 process.env.DSH_HR_PDF_FONT = '/tmp/missing-dsh-hr-font.ttf'
 assert.throws(() => resolvePdfFont('sans'), /PDF font not found/)
 delete process.env.DSH_HR_PDF_FONT
+if (process.platform === 'win32' && existsSync('C:/Windows/Fonts/simsunb.ttf')) {
+  process.env.DSH_HR_PDF_FONT = 'C:/Windows/Fonts/simsunb.ttf'
+  await assert.rejects(renderResumePdfBuffer(resume('classic-serif')), /PDF font cannot render the resume text/)
+  delete process.env.DSH_HR_PDF_FONT
+}
+const unrenderable = resume('classic-serif')
+unrenderable.summary += '\u{10FFFF}'
+await assert.rejects(renderResumePdfBuffer(unrenderable), /No PDF font can render all resume characters/)
 
 function colorOp(hex) {
   const value = Number.parseInt(hex.slice(1), 16)
@@ -172,9 +197,11 @@ const classicPdf = await renderResumePdfBuffer(resume('classic-serif'))
 const graduatePdf = await renderResumePdfBuffer(resume('graduate'))
 const sidebarPdf = await renderResumePdfBuffer(resume('sidebar-dark'))
 const longPdf = await renderResumePdfBuffer(long)
-for (const buffer of [classicPdf, graduatePdf, sidebarPdf, longPdf]) {
+const paragraphPdf = await renderResumePdfBuffer(longParagraph)
+for (const buffer of [classicPdf, graduatePdf, sidebarPdf, longPdf, paragraphPdf]) {
   assert.equal(buffer.subarray(0, 5).toString(), '%PDF-')
 }
+assert.ok((paragraphPdf.toString('latin1').match(/\/Type \/Page(?!s)/g) ?? []).length >= 2)
 assert.ok(pdfStreams(graduatePdf).includes(colorOp('#1d4e89')))
 const sidebarStream = pdfStreams(longPdf)
 const sidebarColor = colorOp('#243833')
